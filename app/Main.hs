@@ -19,6 +19,12 @@ import qualified Discord.Requests as R
 help :: T.Text
 help = "Use !lut help for more specifics about the !lut command"
 
+lutHelp :: T.Text
+lutHelp = "Use !lut <command> for more specifics about the !lut command"
+
+lutUnknown :: T.Text
+lutUnknown = "Unknown command. Use !lut help for more specifics about the !lut command"
+
 
 
 main :: IO ()
@@ -58,31 +64,50 @@ eventHandler event = case event of
                          }
           void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
         when (isLut m) $ do
-          void $ restCall (R.CreateReaction (messageChannelId m, messageId m) "eyes")
-          threadDelay (2 * 10 ^ (6 :: Int))
+          handleLut m
+          -- void $ restCall (R.CreateReaction (messageChannelId m, messageId m) "eyes")
+          -- threadDelay (2 * 10 ^ (6 :: Int))
 
-          -- A very simple message.
-          Right m' <- restCall (R.CreateMessage (messageChannelId m) "Pong")
-          void $ restCall (R.EditMessage (messageChannelId m, messageId m') (def {R.messageDetailedContent=messageContent m' <> "!"}))
+          -- -- A very simple message.
+          -- Right m' <- restCall (R.CreateMessage (messageChannelId m) "Pong")
+          -- void $ restCall (R.EditMessage (messageChannelId m, messageId m') (def {R.messageDetailedContent=messageContent m' <> "!"}))
 
-          latency <- getGatewayLatency
-          mLatency <- measureLatency
+          -- latency <- getGatewayLatency
+          -- mLatency <- measureLatency
 
-          -- A more complex message. Text-to-speech, does not mention everyone nor
-          -- the user, and uses Discord native replies.
-          -- Use ":info" in ghci to explore the type
-          let opts :: R.MessageDetailedOpts
-              opts = def { R.messageDetailedContent = "Here's a more complex message, but doesn't ping @everyone!. Here's the current gateway latency: " <> (T.pack . show) ([latency, mLatency])
-                         , R.messageDetailedTTS = True
-                         , R.messageDetailedAllowedMentions = Just $
-                            def { R.mentionEveryone = False
-                                , R.mentionRepliedUser = False
-                                }
-                         , R.messageDetailedReference = Just $
-                            def { referenceMessageId = Just $ messageId m }
-                         }
-          void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
+          -- -- A more complex message. Text-to-speech, does not mention everyone nor
+          -- -- the user, and uses Discord native replies.
+          -- -- Use ":info" in ghci to explore the type
+          -- let opts :: R.MessageDetailedOpts
+          --     opts = def { R.messageDetailedContent = "Here's a more complex message, but doesn't ping @everyone!. Here's the current gateway latency: " <> (T.pack . show) ([latency, mLatency])
+          --                , R.messageDetailedTTS = True
+          --                , R.messageDetailedAllowedMentions = Just $
+          --                   def { R.mentionEveryone = False
+          --                       , R.mentionRepliedUser = False
+          --                       }
+          --                , R.messageDetailedReference = Just $
+          --                   def { referenceMessageId = Just $ messageId m }
+          --                }
+          -- void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
       _ -> return ()
+
+handleLut :: Message -> DiscordHandler ()
+handleLut m = do
+  let parts = tail $ T.words $ messageContent m
+  let originalM = Just $ def { referenceMessageId = Just $ messageId m }
+  case parts of
+    ["help"] -> do
+      let opts :: R.MessageDetailedOpts
+          opts = def { R.messageDetailedContent = lutHelp
+                     , R.messageDetailedReference = originalM
+                     }
+      void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
+    _  -> do
+      let opts :: R.MessageDetailedOpts
+          opts = def { R.messageDetailedContent = lutUnknown
+                     , R.messageDetailedReference = originalM
+                     }
+      void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
 
 fromBot :: Message -> Bool
 fromBot = userIsBot . messageAuthor
