@@ -16,13 +16,13 @@ import UnliftIO.Concurrent
 
 -- Constants for help and error messages
 helpMessage :: T.Text
-helpMessage = "Use !lut help for more specifics about the !lut command"
+helpMessage = "Use `!lut help` for more specifics about the !lut command"
 
 lutHelpMessage :: T.Text
-lutHelpMessage = "Use !lut <command> for more specifics about the !lut command"
+lutHelpMessage = "TODO!"
 
 lutUnknownCommand :: T.Text
-lutUnknownCommand = "Unknown command. Use !lut help for more specifics about the !lut command"
+lutUnknownCommand = "Unknown command. Use `!lut help` for all the available actions."
 
 lutAddNoName :: T.Text
 lutAddNoName = "You need to provide a name for the lut. Use !lut add <name of lut>"
