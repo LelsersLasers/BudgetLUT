@@ -81,6 +81,8 @@ executable BudgetLUT
     --                   tls >= 2.0.7
     build-depends:    base ^>=4.17.1.0,
                       discord-haskell,
+                      text,
+                      unliftio,
                       dotenv,
 
     -- Directories containing source files.
