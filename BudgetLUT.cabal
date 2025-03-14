@@ -28,11 +28,11 @@ version:            0.1.0.0
 -- A longer description of the package.
 -- description:
 
--- The license under which the package is released.
-license:            MIT
+-- -- The license under which the package is released.
+-- license:            MIT
 
--- The file containing the license text.
-license-file:       LICENSE
+-- -- The file containing the license text.
+-- license-file:       LICENSE
 
 -- The package author(s).
 author:             LelsersLasers
@@ -68,7 +68,20 @@ executable BudgetLUT
     -- other-extensions:
 
     -- Other library packages from which modules are imported.
-    build-depends:    base ^>=4.17.1.0
+    -- build-depends:    base ^>=4.17.1.0,
+    --                   discord-haskell,
+    --                   sqlite-simple,
+    --                   JuicyPixels,
+    --                   bytestring,
+    --                   text,
+    --                   http-conduit,
+    --                   filepath,
+    --                   random >=1.2.1 && <1.3,
+    --                   dotenv,
+    --                   tls >= 2.0.7
+    build-depends:    base ^>=4.17.1.0,
+                      discord-haskell,
+                      dotenv,
 
     -- Directories containing source files.
     hs-source-dirs:   app
