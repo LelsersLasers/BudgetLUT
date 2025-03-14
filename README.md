@@ -7,10 +7,10 @@ Discord bot written in Haskell for uploading, managing, and applying LUTs* to im
 ```
 !help
 !lut help
-!lut add <name> <url>
+!lut add <name> [with image]
 !lut rename <code>
 !lut delete <code>
 !lut view <code>
 !lut list
-!lut apply <code> <url>
+!lut apply <code> [with images]
 ```

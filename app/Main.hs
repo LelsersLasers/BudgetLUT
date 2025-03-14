@@ -25,6 +25,12 @@ lutHelp = "Use !lut <command> for more specifics about the !lut command"
 lutUnknown :: T.Text
 lutUnknown = "Unknown command. Use !lut help for more specifics about the !lut command"
 
+lutAddNoName :: T.Text
+lutAddNoName = "You need to provide a name for the lut. Use !lut add <name of lut>"
+
+lutAddNoAttachment :: T.Text
+lutAddNoAttachment = "You need to provide exactly one attachment for the lut."
+
 
 
 main :: IO ()
@@ -102,6 +108,28 @@ handleLut m = do
                      , R.messageDetailedReference = originalM
                      }
       void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
+    ["add"] -> do
+      let opts :: R.MessageDetailedOpts
+          opts = def { R.messageDetailedContent = lutAddNoName
+                     , R.messageDetailedReference = originalM
+                     }
+      void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts) 
+    "add" : nameParts -> do
+      let attachments = messageAttachments m
+      case attachments of 
+        [a] -> do
+          let name = T.unwords nameParts
+          let opts :: R.MessageDetailedOpts
+              opts = def { R.messageDetailedContent = "Adding " <> attachmentUrl a <> " as " <> name
+                        , R.messageDetailedReference = originalM
+                        }
+          void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts) 
+        _  -> do
+          let opts :: R.MessageDetailedOpts
+              opts = def { R.messageDetailedContent = lutAddNoAttachment
+                        , R.messageDetailedReference = originalM
+                        }
+          void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
     _  -> do
       let opts :: R.MessageDetailedOpts
           opts = def { R.messageDetailedContent = lutUnknown
