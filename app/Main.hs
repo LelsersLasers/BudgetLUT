@@ -108,9 +108,9 @@ handleLutCommand acid m = do
     "add" : nameParts -> handleLutAdd acid m nameParts
     ["rename"] -> sendMessage m lutRenameMissingArgs
     ["rename", _] -> sendMessage m lutRenameMissingArgs
-    "rename" : code : nameParts -> handleLutRename acid m code nameParts
+    "rename" : code : nameParts -> handleLutRename acid m (T.toUpper code) nameParts
     ["delete"] -> sendMessage m lutDeleteNoCode
-    ["delete", code] -> handleLutDelete acid m code
+    ["delete", code] -> handleLutDelete acid m (T.toUpper code)
     _ -> sendMessage m lutUnknownCommand
 
 -- Handle !lut add command
