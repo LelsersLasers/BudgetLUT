@@ -89,6 +89,11 @@ executable BudgetLUT
                       safecopy,
                       mtl,
                       random,
+                      http-conduit,
+                      bytestring,
+                      directory,
+                      filepath,
+                      tls == 1.7.0
 
     -- Directories containing source files.
     hs-source-dirs:   app

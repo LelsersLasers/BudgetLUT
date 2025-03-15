@@ -13,6 +13,11 @@ import KeyValueStore
 import Data.Acid
 import System.Random
 
+import Network.HTTP.Simple (httpBS, getResponseBody, parseRequest)
+import qualified Data.ByteString as BS
+import System.FilePath (takeFileName, takeDirectory)
+import System.Directory (createDirectoryIfMissing)
+
 import Discord
 import qualified Discord.Requests as R
 import Discord.Types
@@ -117,6 +122,10 @@ handleLutAdd acid m nameParts = do
     [a] -> do
       let name = T.unwords nameParts
       code <- generateUniqueCode acid
+      liftIO $ update acid (InsertKeyValue code name)
+      let url = attachmentUrl a
+      let filename = lutFolder <> "/" <> T.unpack code <> ".png"
+      liftIO $ downloadFile (T.unpack url) filename
       sendMessage m $ "Adding " <> code <> " as " <> name
     _ -> sendMessage m lutAddNoAttachment
 
@@ -129,6 +138,17 @@ sendMessage m content = do
             R.messageDetailedReference = Just $ def {referenceMessageId = Just $ messageId m}
           }
   void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
+
+
+-- Download a file from a URL and save it to a local file
+downloadFile :: String -> FilePath -> IO ()
+downloadFile url filename = do
+  createDirectoryIfMissing True (takeDirectory filename)
+  request <- parseRequest url
+  response <- httpBS request
+  let content = getResponseBody response
+  BS.writeFile filename content
+  putStrLn $ "Downloaded " ++ url ++ " to " ++ filename
 
 -- Generate a 3 long code that contains numbers or capital letters
 generateCode :: IO T.Text
