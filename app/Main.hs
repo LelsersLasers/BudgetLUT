@@ -4,31 +4,26 @@
 
 module Main where
 
+import Codec.Picture (convertRGBA8, decodeImage, encodePng)
 import qualified Configuration.Dotenv as Dotenv
-import Control.Monad (unless, void, replicateM)
-import Control.Exception (try, SomeException)
+import Control.Exception (SomeException, try)
+import Control.Monad (replicateM, unless, void)
+import Data.Acid
+import qualified Data.ByteString.Lazy as BL
 import Data.Maybe (isJust)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-
-import KeyValueStore
-import Data.Acid
-import System.Random
-
-import Network.HTTP.Simple (httpBS, getResponseBody, parseRequest)
-import System.FilePath (takeDirectory)
-import System.Directory (createDirectoryIfMissing)
-
-import Codec.Picture (decodeImage, encodePng, convertRGBA8)
-import qualified Data.ByteString.Lazy as BL
-
 import Discord
 import qualified Discord.Requests as R
 import Discord.Types
+import KeyValueStore
+import Network.HTTP.Simple (getResponseBody, httpBS, parseRequest)
+import System.Directory (createDirectoryIfMissing)
 import System.Environment (lookupEnv)
+import System.FilePath (takeDirectory)
+import System.Random
 import UnliftIO (liftIO)
 import UnliftIO.Concurrent
-
 
 -- Constants for file saving
 lutFolder :: FilePath
@@ -52,7 +47,6 @@ lutAddNoName = "You need to provide a name for the lut. Use !lut add <name of lu
 
 lutAddNoAttachment :: T.Text
 lutAddNoAttachment = "You need to provide exactly one attachment for the lut."
-
 
 -- Main function
 main :: IO ()
@@ -136,7 +130,6 @@ sendMessage m content = do
           }
   void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
 
-
 -- Download a file from a URL and save it to a local file
 downloadFile :: String -> FilePath -> IO Bool
 downloadFile url filename = do
@@ -144,42 +137,42 @@ downloadFile url filename = do
   result <- try $ do
     request <- parseRequest url
     response <- httpBS request
-    let content = getResponseBody response  -- content :: BS.ByteString
+    let content = getResponseBody response -- content :: BS.ByteString
     case decodeImage content of
-      Left _err -> return False  -- Decoding failed
+      Left _err -> return False -- Decoding failed
       Right dynamicImage -> do
-        let image = convertRGBA8 dynamicImage  -- Convert to Image PixelRGBA8
+        let image = convertRGBA8 dynamicImage -- Convert to Image PixelRGBA8
         BL.writeFile filename (encodePng image)
-        return True  -- Success
-
+        return True -- Success
   case result of
-    Left (_err :: SomeException) -> return False  -- Exception occurred
-    Right success -> return success  -- Return the result of the operation
+    Left (_err :: SomeException) -> return False -- Exception occurred
+    Right success -> return success -- Return the result of the operation
 
 -- Generate a 3 long code that contains numbers or capital letters
 generateCode :: IO T.Text
 generateCode = do
-  chars <- replicateM 3 $ randomRIO ('0', 'Z') >>= \c ->
-    if c `elem` (['0'..'9'] ++ ['A'..'Z'])
-      then return c
-      else randomRIO ('0', 'Z')  -- Retry if the character is not valid
+  chars <-
+    replicateM 3 $
+      randomRIO ('0', 'Z') >>= \c ->
+        if c `elem` (['0' .. '9'] ++ ['A' .. 'Z'])
+          then return c
+          else randomRIO ('0', 'Z') -- Retry if the character is not valid
   return $ T.pack chars
 
 -- Check of a code is already used
 isCodeUsed :: AcidState KeyValueStore -> T.Text -> DiscordHandler Bool
 isCodeUsed acid code = do
-  result <- liftIO $ query acid (LookupKeyValue code)  -- Lift IO to DiscordHandler
+  result <- liftIO $ query acid (LookupKeyValue code) -- Lift IO to DiscordHandler
   return $ isJust result
 
 -- Generate a unique code
 generateUniqueCode :: AcidState KeyValueStore -> DiscordHandler T.Text
 generateUniqueCode acid = do
-  code <- liftIO generateCode  -- Lift IO to DiscordHandler
+  code <- liftIO generateCode -- Lift IO to DiscordHandler
   used <- isCodeUsed acid code
   if used
-    then generateUniqueCode acid  -- Retry if the code is already used
+    then generateUniqueCode acid -- Retry if the code is already used
     else return code
-
 
 -- Check if a message is from a bot
 fromBot :: Message -> Bool
