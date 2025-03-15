@@ -14,11 +14,8 @@ import Data.SafeCopy
 import Data.Text (Text)
 import Data.Typeable
 
--- Define the key-value store state
--- data KeyValueStore = KeyValueStore (Map Text FilePath)
---   deriving (Show, Typeable)
 newtype KeyValueStore
-  = KeyValueStore (Map Text (FilePath, Text))
+  = KeyValueStore (Map Text Text) -- Code -> name
   deriving (Show, Typeable)
 
 -- Initialize an empty store
@@ -26,12 +23,12 @@ emptyStore :: KeyValueStore
 emptyStore = KeyValueStore Map.empty
 
 -- Define operations
-insertKeyValue :: Text -> (FilePath, Text) -> Update KeyValueStore ()
+insertKeyValue :: Text -> Text -> Update KeyValueStore ()
 insertKeyValue key value = do
   KeyValueStore kvs <- get
   put $ KeyValueStore $ Map.insert key value kvs
 
-lookupKeyValue :: Text -> Query KeyValueStore (Maybe (FilePath, Text))
+lookupKeyValue :: Text -> Query KeyValueStore (Maybe Text)
 lookupKeyValue key = do
   KeyValueStore kvs <- ask
   return $ Map.lookup key kvs
