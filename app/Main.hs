@@ -101,6 +101,7 @@ sendHelpMessage m = sendMessage m helpMessage
 -- Handle !lut commands
 handleLutCommand :: AcidState KeyValueStore -> Message -> DiscordHandler ()
 handleLutCommand acid m = do
+  _ <- restCall $ R.TriggerTypingIndicator (messageChannelId m) -- Trigger typing indicator
   let parts = tail $ T.words $ messageContent m
   case parts of
     ["help"] -> sendMessage m lutHelpMessage
