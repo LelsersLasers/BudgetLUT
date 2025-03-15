@@ -18,7 +18,7 @@ import qualified Discord.Requests as R
 import Discord.Types
 import KeyValueStore
 import Network.HTTP.Simple (getResponseBody, httpBS, parseRequest)
-import System.Directory (createDirectoryIfMissing)
+import System.Directory (createDirectoryIfMissing, removeFile)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory)
 import System.Random
@@ -50,6 +50,9 @@ lutAddNoAttachment = "You need to provide exactly one attachment for the lut."
 
 lutRenameMissingArgs :: T.Text
 lutRenameMissingArgs = "You need to provide the code and the new name for the lut. Use !lut rename <code> <new name>"
+
+lutDeleteNoCode :: T.Text
+lutDeleteNoCode = "You need to provide the code of the lut you want to delete. Use !lut delete <code>"
 
 -- Main function
 main :: IO ()
@@ -106,6 +109,8 @@ handleLutCommand acid m = do
     ["rename"] -> sendMessage m lutRenameMissingArgs
     ["rename", _] -> sendMessage m lutRenameMissingArgs
     "rename" : code : nameParts -> handleLutRename acid m code nameParts
+    ["delete"] -> sendMessage m lutDeleteNoCode
+    ["delete", code] -> handleLutDelete acid m code
     _ -> sendMessage m lutUnknownCommand
 
 -- Handle !lut add command
@@ -137,6 +142,18 @@ handleLutRename acid m code nameParts = do
       liftIO $ update acid (RemoveKeyValue code)
       liftIO $ update acid (InsertKeyValue code name)
       sendMessage m $ "Renamed LUT: **" <> code <> "** to *" <> name <> "*"
+    Nothing -> sendMessage m $ "LUT **" <> code <> "** not found."
+
+-- Handle !lut delete command
+handleLutDelete :: AcidState KeyValueStore -> Message -> T.Text -> DiscordHandler ()
+handleLutDelete acid m code = do
+  result <- liftIO $ query acid (LookupKeyValue code)
+  case result of
+    Just name -> do
+      liftIO $ update acid (RemoveKeyValue code)
+      let filename = lutFolder <> "/" <> T.unpack code <> ".png"
+      _ <- liftIO $ removeFile filename
+      sendMessage m $ "Deleted LUT: **" <> code <> "** (*" <> name <> "*)."
     Nothing -> sendMessage m $ "LUT **" <> code <> "** not found."
 
 
