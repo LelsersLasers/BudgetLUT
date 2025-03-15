@@ -38,8 +38,13 @@ lookupKeyValue key = do
   KeyValueStore kvs <- ask
   return $ Map.lookup key kvs
 
+allKeyValues :: Query KeyValueStore (Map Text Text)
+allKeyValues = do
+  KeyValueStore kvs <- ask
+  return kvs
+
 -- Make the state serializable
 $(deriveSafeCopy 0 'base ''KeyValueStore)
 
 -- Create AcidState instance
-$(makeAcidic ''KeyValueStore ['insertKeyValue, 'removeKeyValue, 'lookupKeyValue])
+$(makeAcidic ''KeyValueStore ['insertKeyValue, 'removeKeyValue, 'lookupKeyValue, 'allKeyValues])

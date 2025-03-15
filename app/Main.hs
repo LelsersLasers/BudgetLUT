@@ -24,6 +24,7 @@ import System.FilePath (takeDirectory)
 import System.Random
 import UnliftIO (liftIO)
 import UnliftIO.Concurrent
+import qualified Data.Map as Map
 
 -- Constants for file saving
 lutFolder :: FilePath
@@ -112,6 +113,7 @@ handleLutCommand acid m = do
     "rename" : code : nameParts -> handleLutRename acid m (T.toUpper code) nameParts
     ["delete"] -> sendMessage m lutDeleteNoCode
     ["delete", code] -> handleLutDelete acid m (T.toUpper code)
+    ["list"] -> handleLutList acid m
     _ -> sendMessage m lutUnknownCommand
 
 -- Handle !lut add command
@@ -156,6 +158,19 @@ handleLutDelete acid m code = do
       _ <- liftIO $ removeFile filename
       sendMessage m $ "Deleted LUT: **" <> code <> "** (*" <> name <> "*)."
     Nothing -> sendMessage m $ "LUT **" <> code <> "** not found."
+
+-- Handle !lut list command
+handleLutList :: AcidState KeyValueStore -> Message -> DiscordHandler ()
+handleLutList acid m = do
+  result <- liftIO $ query acid AllKeyValues
+  let kvs = result -- No need for `Maybe`, as `query` returns the actual result
+  if Map.null kvs
+    then sendMessage m "No LUTs added yet!"
+    else do
+      let luts = Map.toList kvs
+      let lutList = T.unlines $ map (\(code, name) -> "- **" <> code <> "**: *" <> name <> "*") luts
+      let content = "LUTs:\n" <> lutList
+      sendMessage m content
 
 
 -- Helper function to send a message with a reference to the original message
