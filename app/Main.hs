@@ -48,6 +48,9 @@ lutAddNoName = "You need to provide a name for the lut. Use !lut add <name of lu
 lutAddNoAttachment :: T.Text
 lutAddNoAttachment = "You need to provide exactly one attachment for the lut."
 
+lutRenameMissingArgs :: T.Text
+lutRenameMissingArgs = "You need to provide the code and the new name for the lut. Use !lut rename <code> <new name>"
+
 -- Main function
 main :: IO ()
 main = do
@@ -67,6 +70,7 @@ main = do
     runDiscord $
       def
         { discordToken = tok,
+          discordOnStart = liftIO $ putStrLn "Started!",
           discordOnEnd = liftIO $ threadDelay (round (0.4 :: Double) * (10 ^ (6 :: Int))) >> putStrLn "\nDone!",
           discordOnEvent = eventHandler acid,
           discordOnLog = \s -> TIO.putStrLn s >> TIO.putStrLn T.empty,
@@ -99,6 +103,9 @@ handleLutCommand acid m = do
     ["help"] -> sendMessage m lutHelpMessage
     ["add"] -> sendMessage m lutAddNoName
     "add" : nameParts -> handleLutAdd acid m nameParts
+    ["rename"] -> sendMessage m lutRenameMissingArgs
+    ["rename", _] -> sendMessage m lutRenameMissingArgs
+    "rename" : code : nameParts -> handleLutRename acid m code nameParts
     _ -> sendMessage m lutUnknownCommand
 
 -- Handle !lut add command
@@ -119,6 +126,19 @@ handleLutAdd acid m nameParts = do
           _ <- liftIO $ update acid (RemoveKeyValue code)
           sendMessage m "Failed to download the file. Make sure you upload a valid image!"
     _ -> sendMessage m lutAddNoAttachment
+
+-- Handle !lut rename command
+handleLutRename :: AcidState KeyValueStore -> Message -> T.Text -> [T.Text] -> DiscordHandler ()
+handleLutRename acid m code nameParts = do
+  let name = T.unwords nameParts
+  result <- liftIO $ query acid (LookupKeyValue code)
+  case result of
+    Just _ -> do
+      liftIO $ update acid (RemoveKeyValue code)
+      liftIO $ update acid (InsertKeyValue code name)
+      sendMessage m $ "Renamed LUT: **" <> code <> "** to *" <> name <> "*"
+    Nothing -> sendMessage m $ "LUT **" <> code <> "** not found."
+
 
 -- Helper function to send a message with a reference to the original message
 sendMessage :: Message -> T.Text -> DiscordHandler ()
