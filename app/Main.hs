@@ -14,9 +14,11 @@ import Data.Acid
 import System.Random
 
 import Network.HTTP.Simple (httpBS, getResponseBody, parseRequest)
-import qualified Data.ByteString as BS
-import System.FilePath (takeFileName, takeDirectory)
+import System.FilePath (takeDirectory)
 import System.Directory (createDirectoryIfMissing)
+
+import Codec.Picture (decodeImage, encodePng, convertRGBA8)
+import qualified Data.ByteString.Lazy as BL
 
 import Discord
 import qualified Discord.Requests as R
@@ -147,8 +149,12 @@ downloadFile url filename = do
   request <- parseRequest url
   response <- httpBS request
   let content = getResponseBody response
-  BS.writeFile filename content
-  putStrLn $ "Downloaded " ++ url ++ " to " ++ filename
+  case decodeImage content of
+    Left err -> putStrLn $ "Failed to decode image: " ++ err
+    Right dynamicImage -> do
+      let image = convertRGBA8 dynamicImage  -- Convert to Image PixelRGBA8
+      BL.writeFile filename (encodePng image)
+      putStrLn $ "Downloaded and converted " ++ url ++ " to " ++ filename
 
 -- Generate a 3 long code that contains numbers or capital letters
 generateCode :: IO T.Text

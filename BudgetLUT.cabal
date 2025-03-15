@@ -93,6 +93,7 @@ executable BudgetLUT
                       bytestring,
                       directory,
                       filepath,
+                      JuicyPixels,
                       tls == 1.7.0
 
     -- Directories containing source files.
