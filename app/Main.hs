@@ -1,10 +1,12 @@
 -- Allows "strings" to be Data.Text
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
 import qualified Configuration.Dotenv as Dotenv
 import Control.Monad (unless, void, replicateM)
+import Control.Exception (try, SomeException)
 import Data.Maybe (isJust)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -51,17 +53,6 @@ lutAddNoName = "You need to provide a name for the lut. Use !lut add <name of lu
 lutAddNoAttachment :: T.Text
 lutAddNoAttachment = "You need to provide exactly one attachment for the lut."
 
--- -- acid-state config/setup
--- data KeyValueStore = KeyValueStore (Map T.Text FilePath)
---   deriving (Show, Typeable)
-
--- emptyStore :: KeyValueStore
--- emptyStore = KeyValueStore Map.empty
-
--- insertKeyValue :: T.Text -> T.Text -> Update KeyValueStore ()
--- insertKeyValue key value = do
---   KeyValueStore kvs <- get
---   put $ KeyValueStore $ Map.insert key value kvs
 
 -- Main function
 main :: IO ()
@@ -127,8 +118,12 @@ handleLutAdd acid m nameParts = do
       liftIO $ update acid (InsertKeyValue code name)
       let url = attachmentUrl a
       let filename = lutFolder <> "/" <> T.unpack code <> ".png"
-      liftIO $ downloadFile (T.unpack url) filename
-      sendMessage m $ "Adding " <> code <> " as " <> name
+      success <- liftIO $ downloadFile (T.unpack url) filename
+      if success
+        then sendMessage m $ "Added LUT: *" <> name <> "* as **" <> code <> "**"
+        else do
+          _ <- liftIO $ update acid (RemoveKeyValue code)
+          sendMessage m "Failed to download the file. Make sure you upload a valid image!"
     _ -> sendMessage m lutAddNoAttachment
 
 -- Helper function to send a message with a reference to the original message
@@ -143,18 +138,23 @@ sendMessage m content = do
 
 
 -- Download a file from a URL and save it to a local file
-downloadFile :: String -> FilePath -> IO ()
+downloadFile :: String -> FilePath -> IO Bool
 downloadFile url filename = do
   createDirectoryIfMissing True (takeDirectory filename)
-  request <- parseRequest url
-  response <- httpBS request
-  let content = getResponseBody response
-  case decodeImage content of
-    Left err -> putStrLn $ "Failed to decode image: " ++ err
-    Right dynamicImage -> do
-      let image = convertRGBA8 dynamicImage  -- Convert to Image PixelRGBA8
-      BL.writeFile filename (encodePng image)
-      putStrLn $ "Downloaded and converted " ++ url ++ " to " ++ filename
+  result <- try $ do
+    request <- parseRequest url
+    response <- httpBS request
+    let content = getResponseBody response  -- content :: BS.ByteString
+    case decodeImage content of
+      Left _err -> return False  -- Decoding failed
+      Right dynamicImage -> do
+        let image = convertRGBA8 dynamicImage  -- Convert to Image PixelRGBA8
+        BL.writeFile filename (encodePng image)
+        return True  -- Success
+
+  case result of
+    Left (_err :: SomeException) -> return False  -- Exception occurred
+    Right success -> return success  -- Return the result of the operation
 
 -- Generate a 3 long code that contains numbers or capital letters
 generateCode :: IO T.Text
