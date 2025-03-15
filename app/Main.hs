@@ -30,6 +30,9 @@ import qualified Data.Map as Map
 lutFolder :: FilePath
 lutFolder = "luts"
 
+applyFolder :: FilePath
+applyFolder = "applying"
+
 acidPath :: FilePath
 acidPath = lutFolder <> "/acid"
 
@@ -57,6 +60,12 @@ lutDeleteNoCode = "You need to provide the code of the lut you want to delete. U
 
 lutViewNoCode :: T.Text
 lutViewNoCode = "You need to provide the code of the lut you want to view. Use !lut view <code>"
+
+lutApplyNoCode :: T.Text
+lutApplyNoCode = "You need to provide the code of the lut you want to apply. Use !lut apply <code>"
+
+lutApplyNoAttachments :: T.Text
+lutApplyNoAttachments = "You need to provide attachments to apply the lut."
 
 -- Main function
 main :: IO ()
@@ -119,6 +128,8 @@ handleLutCommand acid m = do
     ["list"] -> handleLutList acid m
     ["view"] -> sendMessage m lutViewNoCode
     ["view", code] -> handleLutView acid m (T.toUpper code)
+    ["apply"] -> sendMessage m lutApplyNoCode
+    ["apply", code] -> handleLutApply acid m (T.toUpper code)
     _ -> sendMessage m lutUnknownCommand
 
 -- Handle !lut add command
@@ -187,6 +198,34 @@ handleLutView acid m code = do
       let content = "LUT **" <> code <> "** (*" <> name <> "*):"
       sendMessageWithAttachments m content (T.pack filename)
     Nothing -> sendMessage m $ "LUT **" <> code <> "** not found."
+
+-- Handle !lut apply command
+handleLutApply :: AcidState KeyValueStore -> Message -> T.Text -> DiscordHandler ()
+handleLutApply acid m lutCode = do
+  result <- liftIO $ query acid (LookupKeyValue lutCode)
+  case result of
+    Just lutName -> do
+      let attachments = messageAttachments m
+      case attachments of
+        [a] -> do
+          let lutFilename = lutFolder <> "/" <> T.unpack lutCode <> ".png"
+          applyCode <- generateUniqueCode acid
+          liftIO $ update acid (InsertKeyValue applyCode lutName)
+          let url = attachmentUrl a
+          let applyFilename = applyFolder <> "/" <> T.unpack applyCode <> ".png"
+          liftIO $ putStrLn $ "Downloading file from: " <> T.unpack url
+          success <- liftIO $ downloadFile (T.unpack url) applyFilename
+          if success
+            then do
+              let content = "Applied LUT: *" <> lutName <> "* (**" <> applyCode <> "**)"
+              sendMessageWithAttachments m content (T.pack applyFilename)
+              _ <- liftIO $ removeFile applyFilename
+              return ()
+            else do
+              _ <- liftIO $ update acid (RemoveKeyValue applyCode)
+              sendMessage m "Failed to download the file. Make sure you upload a valid image!"
+        _ -> sendMessage m lutApplyNoAttachments
+    Nothing -> sendMessage m $ "LUT **" <> lutCode <> "** not found."
 
 
 -- Helper function to send a message with a reference to the original message
