@@ -28,6 +28,11 @@ insertKeyValue key value = do
   KeyValueStore kvs <- get
   put $ KeyValueStore $ Map.insert key value kvs
 
+removeKeyValue :: Text -> Update KeyValueStore ()
+removeKeyValue key = do
+  KeyValueStore kvs <- get
+  put $ KeyValueStore $ Map.delete key kvs
+
 lookupKeyValue :: Text -> Query KeyValueStore (Maybe Text)
 lookupKeyValue key = do
   KeyValueStore kvs <- ask
@@ -37,4 +42,4 @@ lookupKeyValue key = do
 $(deriveSafeCopy 0 'base ''KeyValueStore)
 
 -- Create AcidState instance
-$(makeAcidic ''KeyValueStore ['insertKeyValue, 'lookupKeyValue])
+$(makeAcidic ''KeyValueStore ['insertKeyValue, 'removeKeyValue, 'lookupKeyValue])
