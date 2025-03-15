@@ -55,6 +55,9 @@ lutRenameMissingArgs = "You need to provide the code and the new name for the lu
 lutDeleteNoCode :: T.Text
 lutDeleteNoCode = "You need to provide the code of the lut you want to delete. Use !lut delete <code>"
 
+lutViewNoCode :: T.Text
+lutViewNoCode = "You need to provide the code of the lut you want to view. Use !lut view <code>"
+
 -- Main function
 main :: IO ()
 main = do
@@ -114,6 +117,8 @@ handleLutCommand acid m = do
     ["delete"] -> sendMessage m lutDeleteNoCode
     ["delete", code] -> handleLutDelete acid m (T.toUpper code)
     ["list"] -> handleLutList acid m
+    ["view"] -> sendMessage m lutViewNoCode
+    ["view", code] -> handleLutView acid m (T.toUpper code)
     _ -> sendMessage m lutUnknownCommand
 
 -- Handle !lut add command
@@ -172,6 +177,17 @@ handleLutList acid m = do
       let content = "LUTs:\n" <> lutList
       sendMessage m content
 
+-- Handle !lut view command
+handleLutView :: AcidState KeyValueStore -> Message -> T.Text -> DiscordHandler ()
+handleLutView acid m code = do
+  result <- liftIO $ query acid (LookupKeyValue code)
+  case result of
+    Just name -> do
+      let filename = lutFolder <> "/" <> T.unpack code <> ".png"
+      let content = "LUT **" <> code <> "** (*" <> name <> "*):"
+      sendMessageWithAttachments m content (T.pack filename)
+    Nothing -> sendMessage m $ "LUT **" <> code <> "** not found."
+
 
 -- Helper function to send a message with a reference to the original message
 sendMessage :: Message -> T.Text -> DiscordHandler ()
@@ -180,6 +196,18 @@ sendMessage m content = do
         def
           { R.messageDetailedContent = content,
             R.messageDetailedReference = Just $ def {referenceMessageId = Just $ messageId m}
+          }
+  void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
+
+sendMessageWithAttachments :: Message -> T.Text -> T.Text -> DiscordHandler ()
+sendMessageWithAttachments m content filename = do
+  bl <- liftIO $ BL.readFile (T.unpack filename)
+  let bs = BL.toStrict bl
+  let opts =
+        def
+          { R.messageDetailedContent = content,
+            R.messageDetailedReference = Just $ def {referenceMessageId = Just $ messageId m},
+            R.messageDetailedFile = Just (filename, bs)
           }
   void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
 
