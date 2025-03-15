@@ -4,15 +4,29 @@
 module Main where
 
 import qualified Configuration.Dotenv as Dotenv
-import Control.Monad (unless, void)
+import Control.Monad (unless, void, replicateM)
+import Data.Maybe (isJust)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+
+import KeyValueStore
+import Data.Acid
+import System.Random
+
 import Discord
 import qualified Discord.Requests as R
 import Discord.Types
 import System.Environment (lookupEnv)
 import UnliftIO (liftIO)
 import UnliftIO.Concurrent
+
+
+-- Constants for file saving
+lutFolder :: FilePath
+lutFolder = "luts"
+
+acidPath :: FilePath
+acidPath = lutFolder <> "/acid"
 
 -- Constants for help and error messages
 helpMessage :: T.Text
@@ -30,6 +44,18 @@ lutAddNoName = "You need to provide a name for the lut. Use !lut add <name of lu
 lutAddNoAttachment :: T.Text
 lutAddNoAttachment = "You need to provide exactly one attachment for the lut."
 
+-- -- acid-state config/setup
+-- data KeyValueStore = KeyValueStore (Map T.Text FilePath)
+--   deriving (Show, Typeable)
+
+-- emptyStore :: KeyValueStore
+-- emptyStore = KeyValueStore Map.empty
+
+-- insertKeyValue :: T.Text -> T.Text -> Update KeyValueStore ()
+-- insertKeyValue key value = do
+--   KeyValueStore kvs <- get
+--   put $ KeyValueStore $ Map.insert key value kvs
+
 -- Main function
 main :: IO ()
 main = do
@@ -42,29 +68,31 @@ main = do
     Just token -> return (T.pack token)
     Nothing -> fail "DISCORD_TOKEN not found in environment"
 
+  acid <- openLocalStateFrom acidPath emptyStore
+
   -- Run the Discord bot
   err <-
     runDiscord $
       def
         { discordToken = tok,
           discordOnEnd = liftIO $ threadDelay (round (0.4 :: Double) * (10 ^ (6 :: Int))) >> putStrLn "\nDone!",
-          discordOnEvent = eventHandler,
+          discordOnEvent = eventHandler acid,
           discordOnLog = \s -> TIO.putStrLn s >> TIO.putStrLn T.empty,
           discordGatewayIntent = def {gatewayIntentMessageContent = True}
         }
   TIO.putStrLn err
 
 -- Event handler
-eventHandler :: Event -> DiscordHandler ()
-eventHandler event = case event of
-  MessageCreate m -> unless (fromBot m) $ handleMessage m
+eventHandler :: AcidState KeyValueStore -> Event -> DiscordHandler ()
+eventHandler acid event = case event of
+  MessageCreate m -> unless (fromBot m) $ handleMessage acid m
   _ -> return ()
 
 -- Handle incoming messages
-handleMessage :: Message -> DiscordHandler ()
-handleMessage m
+handleMessage :: AcidState KeyValueStore -> Message -> DiscordHandler ()
+handleMessage acid m
   | isHelp m = sendHelpMessage m
-  | isLut m = handleLutCommand m
+  | isLut m = handleLutCommand acid m
   | otherwise = return ()
 
 -- Send help message
@@ -72,23 +100,24 @@ sendHelpMessage :: Message -> DiscordHandler ()
 sendHelpMessage m = sendMessage m helpMessage
 
 -- Handle !lut commands
-handleLutCommand :: Message -> DiscordHandler ()
-handleLutCommand m = do
+handleLutCommand :: AcidState KeyValueStore -> Message -> DiscordHandler ()
+handleLutCommand acid m = do
   let parts = tail $ T.words $ messageContent m
   case parts of
     ["help"] -> sendMessage m lutHelpMessage
     ["add"] -> sendMessage m lutAddNoName
-    "add" : nameParts -> handleLutAdd m nameParts
+    "add" : nameParts -> handleLutAdd acid m nameParts
     _ -> sendMessage m lutUnknownCommand
 
 -- Handle !lut add command
-handleLutAdd :: Message -> [T.Text] -> DiscordHandler ()
-handleLutAdd m nameParts = do
+handleLutAdd :: AcidState KeyValueStore -> Message -> [T.Text] -> DiscordHandler ()
+handleLutAdd acid m nameParts = do
   let attachments = messageAttachments m
   case attachments of
     [a] -> do
       let name = T.unwords nameParts
-      sendMessage m $ "Adding " <> attachmentUrl a <> " as " <> name
+      code <- generateUniqueCode acid
+      sendMessage m $ "Adding " <> code <> " as " <> name
     _ -> sendMessage m lutAddNoAttachment
 
 -- Helper function to send a message with a reference to the original message
@@ -100,6 +129,31 @@ sendMessage m content = do
             R.messageDetailedReference = Just $ def {referenceMessageId = Just $ messageId m}
           }
   void $ restCall (R.CreateMessageDetailed (messageChannelId m) opts)
+
+-- Generate a 3 long code that contains numbers or capital letters
+generateCode :: IO T.Text
+generateCode = do
+  chars <- replicateM 3 $ randomRIO ('0', 'Z') >>= \c ->
+    if c `elem` (['0'..'9'] ++ ['A'..'Z'])
+      then return c
+      else randomRIO ('0', 'Z')  -- Retry if the character is not valid
+  return $ T.pack chars
+
+-- Check of a code is already used
+isCodeUsed :: AcidState KeyValueStore -> T.Text -> DiscordHandler Bool
+isCodeUsed acid code = do
+  result <- liftIO $ query acid (LookupKeyValue code)  -- Lift IO to DiscordHandler
+  return $ isJust result
+
+-- Generate a unique code
+generateUniqueCode :: AcidState KeyValueStore -> DiscordHandler T.Text
+generateUniqueCode acid = do
+  code <- liftIO generateCode  -- Lift IO to DiscordHandler
+  used <- isCodeUsed acid code
+  if used
+    then generateUniqueCode acid  -- Retry if the code is already used
+    else return code
+
 
 -- Check if a message is from a bot
 fromBot :: Message -> Bool

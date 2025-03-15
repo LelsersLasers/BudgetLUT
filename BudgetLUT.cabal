@@ -61,8 +61,8 @@ executable BudgetLUT
     -- .hs or .lhs file containing the Main module.
     main-is:          Main.hs
 
-    -- Modules included in this executable, other than Main.
-    -- other-modules:
+    Modules included in this executable, other than Main.
+    other-modules: KeyValueStore
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -84,6 +84,11 @@ executable BudgetLUT
                       text,
                       unliftio,
                       dotenv,
+                      acid-state,
+                      containers,
+                      safecopy,
+                      mtl,
+                      random,
 
     -- Directories containing source files.
     hs-source-dirs:   app
