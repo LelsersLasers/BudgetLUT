@@ -37,7 +37,7 @@ applyFolder :: FilePath
 applyFolder = "applying"
 
 acidPath :: FilePath
-acidPath = lutFolder <> "/acid"
+acidPath = lutFolder <> "/store"
 
 -- Constants for help and error messages
 helpMessage :: T.Text
@@ -82,7 +82,7 @@ main = do
     Just token -> return (T.pack token)
     Nothing -> fail "DISCORD_TOKEN not found in environment"
 
-  acid <- openLocalStateFrom acidPath emptyStore
+  lutStore <- openLocalStateFrom acidPath emptyStore
 
   -- Run the Discord bot
   err <-
@@ -91,7 +91,7 @@ main = do
         { discordToken = tok,
           discordOnStart = liftIO $ putStrLn "Started!",
           discordOnEnd = liftIO $ threadDelay (round (0.4 :: Double) * (10 ^ (6 :: Int))) >> putStrLn "\nDone!",
-          discordOnEvent = eventHandler acid,
+          discordOnEvent = eventHandler lutStore,
           discordOnLog = \s -> TIO.putStrLn s >> TIO.putStrLn T.empty,
           discordGatewayIntent = def {gatewayIntentMessageContent = True}
         }
@@ -99,15 +99,15 @@ main = do
 
 -- Event handler
 eventHandler :: AcidState KeyValueStore -> Event -> DiscordHandler ()
-eventHandler acid event = case event of
-  MessageCreate m -> unless (fromBot m) $ handleMessage acid m
+eventHandler lutStore event = case event of
+  MessageCreate m -> unless (fromBot m) $ handleMessage lutStore m
   _ -> return ()
 
 -- Handle incoming messages
 handleMessage :: AcidState KeyValueStore -> Message -> DiscordHandler ()
-handleMessage acid m
+handleMessage lutStore m
   | isHelp m = sendHelpMessage m
-  | isLut m = handleLutCommand acid m
+  | isLut m = handleLutCommand lutStore m
   | otherwise = return ()
 
 -- Send help message
@@ -116,63 +116,63 @@ sendHelpMessage m = sendMessage m helpMessage
 
 -- Handle !lut commands
 handleLutCommand :: AcidState KeyValueStore -> Message -> DiscordHandler ()
-handleLutCommand acid m = do
+handleLutCommand lutStore m = do
   _ <- restCall $ R.TriggerTypingIndicator (messageChannelId m) -- Trigger typing indicator
   let parts = tail $ T.words $ messageContent m
   case parts of
     ["help"] -> sendMessage m lutHelpMessage
     ["add"] -> sendMessage m lutAddNoName
-    "add" : nameParts -> handleLutAdd acid m nameParts
+    "add" : nameParts -> handleLutAdd lutStore m nameParts
     ["rename"] -> sendMessage m lutRenameMissingArgs
     ["rename", _] -> sendMessage m lutRenameMissingArgs
-    "rename" : code : nameParts -> handleLutRename acid m (T.toUpper code) nameParts
+    "rename" : code : nameParts -> handleLutRename lutStore m (T.toUpper code) nameParts
     ["delete"] -> sendMessage m lutDeleteNoCode
-    ["delete", code] -> handleLutDelete acid m (T.toUpper code)
-    ["list"] -> handleLutList acid m
+    ["delete", code] -> handleLutDelete lutStore m (T.toUpper code)
+    ["list"] -> handleLutList lutStore m
     ["view"] -> sendMessage m lutViewNoCode
-    ["view", code] -> handleLutView acid m (T.toUpper code)
+    ["view", code] -> handleLutView lutStore m (T.toUpper code)
     ["apply"] -> sendMessage m lutApplyNoCode
-    ["apply", code] -> handleLutApply acid m (T.toUpper code)
+    ["apply", code] -> handleLutApply lutStore m (T.toUpper code)
     _ -> sendMessage m lutUnknownCommand
 
 -- Handle !lut add command
 handleLutAdd :: AcidState KeyValueStore -> Message -> [T.Text] -> DiscordHandler ()
-handleLutAdd acid m nameParts = do
+handleLutAdd lutStore m nameParts = do
   let attachments = messageAttachments m
   case attachments of
     [a] -> do
       let name = T.unwords nameParts
-      code <- generateUniqueCode acid
-      liftIO $ update acid (InsertKeyValue code name)
+      code <- generateUniqueCode lutStore
+      liftIO $ update lutStore (InsertKeyValue code name)
       let url = attachmentUrl a
       let filename = lutFolder <> "/" <> T.unpack code <> ".png"
       success <- liftIO $ downloadFile (T.unpack url) filename
       if success
         then sendMessage m $ "Added LUT: *" <> name <> "* as **" <> code <> "**"
         else do
-          _ <- liftIO $ update acid (RemoveKeyValue code)
+          _ <- liftIO $ update lutStore (RemoveKeyValue code)
           sendMessage m "Failed to download the file. Make sure you upload a valid image!"
     _ -> sendMessage m lutAddNoAttachment
 
 -- Handle !lut rename command
 handleLutRename :: AcidState KeyValueStore -> Message -> T.Text -> [T.Text] -> DiscordHandler ()
-handleLutRename acid m code nameParts = do
+handleLutRename lutStore m code nameParts = do
   let name = T.unwords nameParts
-  result <- liftIO $ query acid (LookupKeyValue code)
+  result <- liftIO $ query lutStore (LookupKeyValue code)
   case result of
     Just _ -> do
-      liftIO $ update acid (RemoveKeyValue code)
-      liftIO $ update acid (InsertKeyValue code name)
+      liftIO $ update lutStore (RemoveKeyValue code)
+      liftIO $ update lutStore (InsertKeyValue code name)
       sendMessage m $ "Renamed LUT: **" <> code <> "** to *" <> name <> "*"
     Nothing -> sendMessage m $ "LUT **" <> code <> "** not found."
 
 -- Handle !lut delete command
 handleLutDelete :: AcidState KeyValueStore -> Message -> T.Text -> DiscordHandler ()
-handleLutDelete acid m code = do
-  result <- liftIO $ query acid (LookupKeyValue code)
+handleLutDelete lutStore m code = do
+  result <- liftIO $ query lutStore (LookupKeyValue code)
   case result of
     Just name -> do
-      liftIO $ update acid (RemoveKeyValue code)
+      liftIO $ update lutStore (RemoveKeyValue code)
       let filename = lutFolder <> "/" <> T.unpack code <> ".png"
       _ <- liftIO $ removeFile filename
       sendMessage m $ "Deleted LUT: **" <> code <> "** (*" <> name <> "*)."
@@ -180,8 +180,8 @@ handleLutDelete acid m code = do
 
 -- Handle !lut list command
 handleLutList :: AcidState KeyValueStore -> Message -> DiscordHandler ()
-handleLutList acid m = do
-  result <- liftIO $ query acid AllKeyValues
+handleLutList lutStore m = do
+  result <- liftIO $ query lutStore AllKeyValues
   let kvs = result -- No need for `Maybe`, as `query` returns the actual result
   if Map.null kvs
     then sendMessage m "No LUTs added yet!"
@@ -193,8 +193,8 @@ handleLutList acid m = do
 
 -- Handle !lut view command
 handleLutView :: AcidState KeyValueStore -> Message -> T.Text -> DiscordHandler ()
-handleLutView acid m code = do
-  result <- liftIO $ query acid (LookupKeyValue code)
+handleLutView lutStore m code = do
+  result <- liftIO $ query lutStore (LookupKeyValue code)
   case result of
     Just name -> do
       let filename = lutFolder <> "/" <> T.unpack code <> ".png"
@@ -204,16 +204,16 @@ handleLutView acid m code = do
 
 -- Handle !lut apply command
 handleLutApply :: AcidState KeyValueStore -> Message -> T.Text -> DiscordHandler ()
-handleLutApply acid m lutCode = do
-  result <- liftIO $ query acid (LookupKeyValue lutCode)
+handleLutApply lutStore m lutCode = do
+  result <- liftIO $ query lutStore (LookupKeyValue lutCode)
   case result of
     Just lutName -> do
       let attachments = messageAttachments m
       case attachments of
         [a] -> do
           let lutFilename = lutFolder <> "/" <> T.unpack lutCode <> ".png"
-          applyCode <- generateUniqueCode acid
-          liftIO $ update acid (InsertKeyValue applyCode lutName)
+          applyCode <- generateUniqueCode lutStore
+          liftIO $ update lutStore (InsertKeyValue applyCode lutName)
           let url = attachmentUrl a
           let applyFilename = applyFolder <> "/" <> T.unpack applyCode <> ".png"
           liftIO $ putStrLn $ "Downloading file from: " <> T.unpack url
@@ -232,7 +232,7 @@ handleLutApply acid m lutCode = do
               liftIO $ removeFile applyFilename
             else do
               sendMessage m "Failed to download the file. Make sure you upload a valid image!"
-          liftIO $ update acid (RemoveKeyValue applyCode)
+          liftIO $ update lutStore (RemoveKeyValue applyCode)
         _ -> sendMessage m lutApplyNoAttachments
     Nothing -> sendMessage m $ "LUT **" <> lutCode <> "** not found."
 
@@ -324,17 +324,17 @@ generateChar = randomRIO ('0', 'Z') >>= \c -> if c `elem` (['0' .. '9'] ++ ['A' 
 
 -- Check of a code is already used
 isCodeUsed :: AcidState KeyValueStore -> T.Text -> DiscordHandler Bool
-isCodeUsed acid code = do
-  result <- liftIO $ query acid (LookupKeyValue code) -- Lift IO to DiscordHandler
+isCodeUsed lutStore code = do
+  result <- liftIO $ query lutStore (LookupKeyValue code) -- Lift IO to DiscordHandler
   return $ isJust result
 
 -- Generate a unique code
 generateUniqueCode :: AcidState KeyValueStore -> DiscordHandler T.Text
-generateUniqueCode acid = do
+generateUniqueCode lutStore = do
   code <- liftIO generateCode -- Lift IO to DiscordHandler
-  used <- isCodeUsed acid code
+  used <- isCodeUsed lutStore code
   if used
-    then generateUniqueCode acid -- Retry if the code is already used
+    then generateUniqueCode lutStore -- Retry if the code is already used
     else return code
 
 -- Check if a message is from a bot
