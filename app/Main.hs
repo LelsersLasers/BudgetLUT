@@ -13,6 +13,7 @@ import qualified Data.ByteString.Lazy as BL
 import Data.Maybe (isJust)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import Data.List (nub)
 import Discord
 import qualified Discord.Requests as R
 import Discord.Types
@@ -238,22 +239,21 @@ handleLutApply acid m lutCode = do
 -- Apply the LUT
 applyLut :: FilePath -> FilePath -> FilePath -> IO Bool
 applyLut lutFilename filename newApplyFilename = do
-  -- Load the LUT image
   lutImageDyn <- readImage lutFilename
   case lutImageDyn of
     Left _ -> return False
     Right lut -> do
       let lutImage = convertRGBA8 lut
-      -- Load the input image
       inputImageDyn <- readImage filename
       case inputImageDyn of
         Left _ -> return False
         Right input -> do
           let inputImage = convertRGBA8 input
-          -- Create an output image with the same dimensions as the input image
           let (width, height) = (imageWidth inputImage, imageHeight inputImage)
           liftIO $ putStrLn $ "Applying LUT to image of size: " <> show (width, height)
-          let outputImage = generateImage (\x y -> applyLutPixel (pixelAt inputImage x y) lutImage) width height
+          let lutPixels = nub [pixelAt lutImage x y | x <- [0 .. imageWidth lutImage - 1], y <- [0 .. imageHeight lutImage - 1]]
+          putStrLn $ "LUT size: " <> show (length lutPixels)
+          let outputImage = generateImage (\x y -> applyLutPixel (pixelAt inputImage x y) lutPixels) width height
           liftIO $ putStrLn $ "Saving output image to: " <> filename
           liftIO $ putStrLn $ "First pixel in output: " <> show (pixelAt outputImage 0 0)
           savePngImage newApplyFilename (ImageRGBA8 outputImage)
@@ -261,16 +261,8 @@ applyLut lutFilename filename newApplyFilename = do
           return True
 
 -- Apply the LUT to a single pixel. This means choosing the cloest pixel value in the LUT for each pixel in the image.
-applyLutPixel :: PixelRGBA8 -> Image PixelRGBA8 -> PixelRGBA8
-applyLutPixel pixel lutImage =
-  let
-    width = imageWidth lutImage
-    height = imageHeight lutImage
-    pixels = [ (x, y, pixelAt lutImage x y) | x <- [0 .. width - 1], y <- [0 .. height - 1] ]
-    closestPixel = minimumBy (comparing (pixelDistance pixel . (\(_, _, p) -> p))) pixels
-  in
-    let (_, _, closest) = closestPixel in closest
-
+applyLutPixel :: PixelRGBA8 -> [PixelRGBA8] -> PixelRGBA8
+applyLutPixel pixel = minimumBy (comparing (pixelDistance pixel))
 
 pixelDistance :: PixelRGBA8 -> PixelRGBA8 -> Int
 pixelDistance (PixelRGBA8 r1 g1 b1 _) (PixelRGBA8 r2 g2 b2 _) =
