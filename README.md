@@ -17,6 +17,9 @@ Discord bot written in Haskell for uploading, managing, and applying LUTs* to im
 
 ## TODO
 
+- LUT apply on Multiple files at once
+- LUT apply multi thread
+- On boot: clean apply folder
 - Update all error and help and success and etc messages
 - Not forcably convert file formats to PNG
 - Perserve filenames (see ImageConvertBot)
