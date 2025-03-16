@@ -33,11 +33,14 @@ import Data.Ord (comparing)
 lutFolder :: FilePath
 lutFolder = "luts"
 
-applyFolder :: FilePath
-applyFolder = "applying"
+lutStorePath :: FilePath
+lutStorePath = lutFolder <> "/store"
 
-acidPath :: FilePath
-acidPath = lutFolder <> "/store"
+applyFolder :: FilePath
+applyFolder = "apply"
+
+applyStorePath :: FilePath
+applyStorePath = applyFolder <> "/store"
 
 -- Constants for help and error messages
 helpMessage :: T.Text
@@ -82,7 +85,8 @@ main = do
     Just token -> return (T.pack token)
     Nothing -> fail "DISCORD_TOKEN not found in environment"
 
-  lutStore <- openLocalStateFrom acidPath emptyStore
+  lutStore <- openLocalStateFrom lutStorePath emptyStore
+  applyStore <- openLocalStateFrom applyStorePath emptyStore
 
   -- Run the Discord bot
   err <-
@@ -91,23 +95,23 @@ main = do
         { discordToken = tok,
           discordOnStart = liftIO $ putStrLn "Started!",
           discordOnEnd = liftIO $ threadDelay (round (0.4 :: Double) * (10 ^ (6 :: Int))) >> putStrLn "\nDone!",
-          discordOnEvent = eventHandler lutStore,
+          discordOnEvent = eventHandler lutStore applyStore,
           discordOnLog = \s -> TIO.putStrLn s >> TIO.putStrLn T.empty,
           discordGatewayIntent = def {gatewayIntentMessageContent = True}
         }
   TIO.putStrLn err
 
 -- Event handler
-eventHandler :: AcidState KeyValueStore -> Event -> DiscordHandler ()
-eventHandler lutStore event = case event of
-  MessageCreate m -> unless (fromBot m) $ handleMessage lutStore m
+eventHandler :: AcidState KeyValueStore -> AcidState KeyValueStore -> Event -> DiscordHandler ()
+eventHandler lutStore applyStore event = case event of
+  MessageCreate m -> unless (fromBot m) $ handleMessage lutStore applyStore m
   _ -> return ()
 
 -- Handle incoming messages
-handleMessage :: AcidState KeyValueStore -> Message -> DiscordHandler ()
-handleMessage lutStore m
+handleMessage :: AcidState KeyValueStore -> AcidState KeyValueStore -> Message -> DiscordHandler ()
+handleMessage lutStore applyStore m
   | isHelp m = sendHelpMessage m
-  | isLut m = handleLutCommand lutStore m
+  | isLut m = handleLutCommand lutStore applyStore m
   | otherwise = return ()
 
 -- Send help message
@@ -115,9 +119,9 @@ sendHelpMessage :: Message -> DiscordHandler ()
 sendHelpMessage m = sendMessage m helpMessage
 
 -- Handle !lut commands
-handleLutCommand :: AcidState KeyValueStore -> Message -> DiscordHandler ()
-handleLutCommand lutStore m = do
-  _ <- restCall $ R.TriggerTypingIndicator (messageChannelId m) -- Trigger typing indicator
+handleLutCommand :: AcidState KeyValueStore -> AcidState KeyValueStore -> Message -> DiscordHandler ()
+handleLutCommand lutStore applyStore m = do
+  _ <- restCall $ R.TriggerTypingIndicator (messageChannelId m)
   let parts = tail $ T.words $ messageContent m
   case parts of
     ["help"] -> sendMessage m lutHelpMessage
@@ -132,7 +136,7 @@ handleLutCommand lutStore m = do
     ["view"] -> sendMessage m lutViewNoCode
     ["view", code] -> handleLutView lutStore m (T.toUpper code)
     ["apply"] -> sendMessage m lutApplyNoCode
-    ["apply", code] -> handleLutApply lutStore m (T.toUpper code)
+    ["apply", code] -> handleLutApply lutStore applyStore m (T.toUpper code)
     _ -> sendMessage m lutUnknownCommand
 
 -- Handle !lut add command
@@ -203,36 +207,35 @@ handleLutView lutStore m code = do
     Nothing -> sendMessage m $ "LUT **" <> code <> "** not found."
 
 -- Handle !lut apply command
-handleLutApply :: AcidState KeyValueStore -> Message -> T.Text -> DiscordHandler ()
-handleLutApply lutStore m lutCode = do
+handleLutApply :: AcidState KeyValueStore -> AcidState KeyValueStore -> Message -> T.Text -> DiscordHandler ()
+handleLutApply lutStore applyStore m lutCode = do
   result <- liftIO $ query lutStore (LookupKeyValue lutCode)
   case result of
     Just lutName -> do
       let attachments = messageAttachments m
       case attachments of
         [a] -> do
+          _ <- restCall $ R.CreateReaction (messageChannelId m, messageId m) "🫡"
           let lutFilename = lutFolder <> "/" <> T.unpack lutCode <> ".png"
-          applyCode <- generateUniqueCode lutStore
-          liftIO $ update lutStore (InsertKeyValue applyCode lutName)
+          applyCode <- generateUniqueCode applyStore
+          liftIO $ update applyStore (InsertKeyValue applyCode lutName)
           let url = attachmentUrl a
           let applyFilename = applyFolder <> "/" <> T.unpack applyCode <> ".png"
-          liftIO $ putStrLn $ "Downloading file from: " <> T.unpack url
           success <- liftIO $ downloadFile (T.unpack url) applyFilename
-          let newApplyFilename = applyFolder <> "/" <> T.unpack applyCode <> "2.png"
           if success
             then do
-              liftIO $ putStrLn $ "Applying LUT to file: " <> applyFilename
-              applySuccess <- liftIO $ applyLut lutFilename applyFilename newApplyFilename
+              applySuccess <- liftIO $ applyLut lutFilename applyFilename applyFilename
               if applySuccess
                 then do
                   let content = "Applied LUT: *" <> lutName <> "* (**" <> applyCode <> "**)"
-                  sendMessageWithAttachments m content (T.pack newApplyFilename)
+                  sendMessageWithAttachments m content (T.pack applyFilename)
                 else do
                   sendMessage m "Failed to apply the LUT. :skull:"
               liftIO $ removeFile applyFilename
             else do
               sendMessage m "Failed to download the file. Make sure you upload a valid image!"
-          liftIO $ update lutStore (RemoveKeyValue applyCode)
+          _ <- liftIO $ update applyStore (RemoveKeyValue applyCode)
+          void $ restCall $ R.DeleteOwnReaction (messageChannelId m, messageId m) "🫡"
         _ -> sendMessage m lutApplyNoAttachments
     Nothing -> sendMessage m $ "LUT **" <> lutCode <> "** not found."
 
@@ -250,14 +253,9 @@ applyLut lutFilename filename newApplyFilename = do
         Right input -> do
           let inputImage = convertRGBA8 input
           let (width, height) = (imageWidth inputImage, imageHeight inputImage)
-          liftIO $ putStrLn $ "Applying LUT to image of size: " <> show (width, height)
           let lutPixels = nub [pixelAt lutImage x y | x <- [0 .. imageWidth lutImage - 1], y <- [0 .. imageHeight lutImage - 1]]
-          putStrLn $ "LUT size: " <> show (length lutPixels)
           let outputImage = generateImage (\x y -> applyLutPixel (pixelAt inputImage x y) lutPixels) width height
-          liftIO $ putStrLn $ "Saving output image to: " <> filename
-          liftIO $ putStrLn $ "First pixel in output: " <> show (pixelAt outputImage 0 0)
           savePngImage newApplyFilename (ImageRGBA8 outputImage)
-          liftIO $ putStrLn "LUT applied successfully."
           return True
 
 -- Apply the LUT to a single pixel. This means choosing the cloest pixel value in the LUT for each pixel in the image.

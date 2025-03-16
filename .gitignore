@@ -1,5 +1,6 @@
 **/.env
 **/luts/**
+**/apply/**
 
 dist
 dist-*
