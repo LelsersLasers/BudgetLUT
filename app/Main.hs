@@ -4,7 +4,7 @@
 
 module Main where
 
-import Codec.Picture (convertRGBA8, decodeImage, encodePng)
+import Codec.Picture (convertRGBA8, decodeImage, encodePng, DynamicImage (ImageRGBA8), readImage, savePngImage, Image (imageWidth), imageHeight, generateImage, pixelAt, PixelRGBA8 (..), Pixel (pixelAt))
 import qualified Configuration.Dotenv as Dotenv
 import Control.Exception (SomeException, try)
 import Control.Monad (replicateM, unless, void)
@@ -25,6 +25,8 @@ import System.Random
 import UnliftIO (liftIO)
 import UnliftIO.Concurrent
 import qualified Data.Map as Map
+import Data.Foldable (minimumBy)
+import Data.Ord (comparing)
 
 -- Constants for file saving
 lutFolder :: FilePath
@@ -215,18 +217,69 @@ handleLutApply acid m lutCode = do
           let applyFilename = applyFolder <> "/" <> T.unpack applyCode <> ".png"
           liftIO $ putStrLn $ "Downloading file from: " <> T.unpack url
           success <- liftIO $ downloadFile (T.unpack url) applyFilename
+          let newApplyFilename = applyFolder <> "/" <> T.unpack applyCode <> "2.png"
           if success
             then do
-              let content = "Applied LUT: *" <> lutName <> "* (**" <> applyCode <> "**)"
-              sendMessageWithAttachments m content (T.pack applyFilename)
-              _ <- liftIO $ removeFile applyFilename
-              return ()
+              liftIO $ putStrLn $ "Applying LUT to file: " <> applyFilename
+              applySuccess <- liftIO $ applyLut lutFilename applyFilename newApplyFilename
+              if applySuccess
+                then do
+                  let content = "Applied LUT: *" <> lutName <> "* (**" <> applyCode <> "**)"
+                  sendMessageWithAttachments m content (T.pack newApplyFilename)
+                else do
+                  sendMessage m "Failed to apply the LUT. :skull:"
+              liftIO $ removeFile applyFilename
             else do
-              _ <- liftIO $ update acid (RemoveKeyValue applyCode)
               sendMessage m "Failed to download the file. Make sure you upload a valid image!"
+          liftIO $ update acid (RemoveKeyValue applyCode)
         _ -> sendMessage m lutApplyNoAttachments
     Nothing -> sendMessage m $ "LUT **" <> lutCode <> "** not found."
 
+-- Apply the LUT
+applyLut :: FilePath -> FilePath -> FilePath -> IO Bool
+applyLut lutFilename filename newApplyFilename = do
+  -- Load the LUT image
+  lutImageDyn <- readImage lutFilename
+  case lutImageDyn of
+    Left _ -> return False
+    Right lut -> do
+      let lutImage = convertRGBA8 lut
+      -- Load the input image
+      inputImageDyn <- readImage filename
+      case inputImageDyn of
+        Left _ -> return False
+        Right input -> do
+          let inputImage = convertRGBA8 input
+          -- Create an output image with the same dimensions as the input image
+          let (width, height) = (imageWidth inputImage, imageHeight inputImage)
+          liftIO $ putStrLn $ "Applying LUT to image of size: " <> show (width, height)
+          let outputImage = generateImage (\x y -> applyLutPixel (pixelAt inputImage x y) lutImage) width height
+          liftIO $ putStrLn $ "Saving output image to: " <> filename
+          liftIO $ putStrLn $ "First pixel in output: " <> show (pixelAt outputImage 0 0)
+          savePngImage newApplyFilename (ImageRGBA8 outputImage)
+          liftIO $ putStrLn "LUT applied successfully."
+          return True
+
+-- Apply the LUT to a single pixel. This means choosing the cloest pixel value in the LUT for each pixel in the image.
+applyLutPixel :: PixelRGBA8 -> Image PixelRGBA8 -> PixelRGBA8
+applyLutPixel pixel lutImage =
+  let
+    width = imageWidth lutImage
+    height = imageHeight lutImage
+    pixels = [ (x, y, pixelAt lutImage x y) | x <- [0 .. width - 1], y <- [0 .. height - 1] ]
+    closestPixel = minimumBy (comparing (pixelDistance pixel . (\(_, _, p) -> p))) pixels
+  in
+    let (_, _, closest) = closestPixel in closest
+
+
+pixelDistance :: PixelRGBA8 -> PixelRGBA8 -> Int
+pixelDistance (PixelRGBA8 r1 g1 b1 _) (PixelRGBA8 r2 g2 b2 _) =
+  let
+    dr = fromIntegral r1 - fromIntegral r2
+    dg = fromIntegral g1 - fromIntegral g2
+    db = fromIntegral b1 - fromIntegral b2
+  in
+    dr * dr + dg * dg + db * db
 
 -- Helper function to send a message with a reference to the original message
 sendMessage :: Message -> T.Text -> DiscordHandler ()
