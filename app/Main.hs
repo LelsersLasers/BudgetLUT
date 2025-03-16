@@ -271,13 +271,11 @@ downloadFile url filename = do
 -- Generate a 3 long code that contains numbers or capital letters
 generateCode :: IO T.Text
 generateCode = do
-  chars <-
-    replicateM 3 $
-      randomRIO ('0', 'Z') >>= \c ->
-        if c `elem` (['0' .. '9'] ++ ['A' .. 'Z'])
-          then return c
-          else randomRIO ('0', 'Z') -- Retry if the character is not valid
+  chars <- replicateM 3 generateChar
   return $ T.pack chars
+
+generateChar :: IO Char
+generateChar = randomRIO ('0', 'Z') >>= \c -> if c `elem` (['0' .. '9'] ++ ['A' .. 'Z']) then return c else generateChar
 
 -- Check of a code is already used
 isCodeUsed :: AcidState KeyValueStore -> T.Text -> DiscordHandler Bool
