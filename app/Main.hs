@@ -87,6 +87,11 @@ lutApplyNoAttachments = "You need to provide attachments to apply the lut."
 -- Main function
 main :: IO ()
 main = do
+  -- Use all cores but 1
+  let cores = max (numCapabilities - 1) 1
+  putStrLn $ "Using " <> show cores <> " cores."
+  setNumCapabilities cores
+
   -- Load environment variables from .env file
   Dotenv.loadFile Dotenv.defaultConfig
 
