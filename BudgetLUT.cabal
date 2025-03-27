@@ -106,6 +106,9 @@ executable BudgetLUT
                       directory,
                       filepath,
                       JuicyPixels,
+                      split,
+                      deepseq,
+                      parallel,
                       tls == 1.7.0
 
     -- Directories containing source files.

@@ -1,6 +1,9 @@
 -- Allows "strings" to be Data.Text
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 
 module Main where
 
@@ -8,6 +11,9 @@ import Codec.Picture (convertRGBA8, decodeImage, encodePng, DynamicImage (ImageR
 import qualified Configuration.Dotenv as Dotenv
 import Control.Exception (SomeException, try)
 import Control.Monad (replicateM, unless, void)
+import Control.DeepSeq (NFData(..))
+import Control.Parallel.Strategies
+-- import Control.Parallel
 import Data.Acid
 import qualified Data.ByteString.Lazy as BL
 import Data.Maybe (isJust)
@@ -28,6 +34,11 @@ import UnliftIO.Concurrent
 import qualified Data.Map as Map
 import Data.Foldable (minimumBy)
 import Data.Ord (comparing)
+import GHC.Conc (numCapabilities)
+import Data.List.Split (chunksOf)
+
+instance NFData PixelRGBA8 where
+  rnf (PixelRGBA8 r g b a) = r `seq` g `seq` b `seq` a `seq` ()
 
 -- Constants for file saving
 lutFolder :: FilePath
@@ -253,11 +264,35 @@ applyLut lutFilename filename newApplyFilename = do
         Right input -> do
           let inputImage = convertRGBA8 input
           let (width, height) = (imageWidth inputImage, imageHeight inputImage)
-          let lutPixels = nub [pixelAt lutImage x y | x <- [0 .. imageWidth lutImage - 1], y <- [0 .. imageHeight lutImage - 1]]
-          let outputImage = generateImage (\x y -> applyLutPixel (pixelAt inputImage x y) lutPixels) width height
+          liftIO $ putStrLn $ "\nCAPABILITIES: " <> show numCapabilities
+          liftIO $ putStrLn $ "Starting " <> show (width, height)
+          let lutPixels = [pixelAt lutImage x y | x <- [0 .. imageWidth lutImage - 1], y <- [0 .. imageHeight lutImage - 1]]
+          liftIO $ putStrLn $ "LUT size: " <> show (length lutPixels)
+          let lutPixelsDeduped = parallelDedup lutPixels
+          liftIO $ putStrLn $ "LUT size: " <> show (length lutPixelsDeduped)
+          let f x y = applyLutPixel (pixelAt inputImage x y)
+          let outputImage = generateImageParallel f lutPixels width height
           savePngImage newApplyFilename (ImageRGBA8 outputImage)
           return True
 
+
+parallelDedup :: (Ord a, NFData a) => [a] -> [a]
+parallelDedup xs = nub finalResult
+  where
+    numCores = max (numCapabilities - 1) 1
+    chunks = chunksOf (length xs `div` numCores) xs
+    dedupedChunks = parMap rdeepseq nub chunks
+    finalResult = concat dedupedChunks
+
+generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
+generateImageParallel f lutPixels width height =
+  let
+    -- Process rows in parallel
+    rows = [[f x y lutPixels | x <- [0 .. width - 1]] | y <- [0 .. height - 1]]
+    rowsEval = withStrategy (parList rseq) rows
+  in
+    -- Create the image from the evaluated rows
+    generateImage (\x y -> rowsEval !! y !! x) width height
 -- Apply the LUT to a single pixel. This means choosing the cloest pixel value in the LUT for each pixel in the image.
 applyLutPixel :: PixelRGBA8 -> [PixelRGBA8] -> PixelRGBA8
 applyLutPixel pixel = minimumBy (comparing (pixelDistance pixel))
