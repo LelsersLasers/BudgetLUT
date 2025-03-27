@@ -277,27 +277,54 @@ applyLut lutFilename filename newApplyFilename = do
           liftIO $ putStrLn $ "LUT size: " <> show (length lutPixelsDeduped)
           let f x y = applyLutPixel (pixelAt inputImage x y)
           let outputImage = generateImageParallel f lutPixels width height
+          liftIO $ putStrLn $ "Saving " <> newApplyFilename
           savePngImage newApplyFilename (ImageRGBA8 outputImage)
+          liftIO $ putStrLn "Done!"
           return True
 
 
+-- Deduplicate a list in parallel (chunk in CPU cores - 1 chunks, nub each chunk, concat the results, nub the final result)
 parallelDedup :: (Ord a, NFData a) => [a] -> [a]
-parallelDedup xs = nub finalResult
-  where
-    numCores = max (numCapabilities - 1) 1
-    chunks = chunksOf (length xs `div` numCores) xs
+parallelDedup xs = 
+  let
+    cores = max (numCapabilities - 1) 1
+    chunks = chunksOf (length xs `div` cores) xs
     dedupedChunks = parMap rdeepseq nub chunks
     finalResult = concat dedupedChunks
+  in
+    nub finalResult
+
+-- Apply the LUT to an image in parallel
+-- generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
+-- generateImageParallel f lutPixels width height =
+--   let
+--     rows = [[f x y lutPixels | x <- [0 .. width - 1]] | y <- [0 .. height - 1]]
+--     rowsEval = withStrategy (parList (parList rdeepseq)) rows
+--   in
+--     generateImage (\x y -> rowsEval !! y !! x) width height
+
+-- generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
+-- generateImageParallel f lutPixels width height =
+--   let
+--     rows = [[f x y lutPixels | x <- [0 .. width - 1]] | y <- [0 .. height - 1]]
+--     rowsEval = withStrategy (parList (parList rdeepseq)) rows
+--   in
+--     -- Force full evaluation to avoid laziness after parallel execution
+--     rowsEval `deepseq` generateImage (\x y -> rowsEval !! y !! x) width height
 
 generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
 generateImageParallel f lutPixels width height =
   let
-    -- Process rows in parallel
-    rows = [[f x y lutPixels | x <- [0 .. width - 1]] | y <- [0 .. height - 1]]
-    rowsEval = withStrategy (parList rseq) rows
+    -- rows = [[f x y lutPixels | x <- [0 .. width - 1]] | y <- [0 .. height - 1]]
+    -- rowsEval = withStrategy (parList (parList rdeepseq)) rows
+    pixels = [(x, y) | y <- [0 .. height - 1], x <- [0 .. width - 1]]
+    applied = parMap rdeepseq (\(x, y) -> f x y lutPixels) pixels
+    rows = chunksOf width applied
+    getPixel x y = rows !! y !! x
   in
-    -- Create the image from the evaluated rows
-    generateImage (\x y -> rowsEval !! y !! x) width height
+    -- rowsEval `deepseq` generateImage (\x y -> rowsEval !! y !! x) width height
+    generateImage getPixel width height
+
 -- Apply the LUT to a single pixel. This means choosing the cloest pixel value in the LUT for each pixel in the image.
 applyLutPixel :: PixelRGBA8 -> [PixelRGBA8] -> PixelRGBA8
 applyLutPixel pixel = minimumBy (comparing (pixelDistance pixel))
