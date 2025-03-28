@@ -20,7 +20,7 @@ import Data.Maybe (isJust)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 -- import Data.List (nub)
-import Data.Lisst.Extra (nubOrd)
+import Data.List.Extra (nubOrd)
 import Discord
 import qualified Discord.Requests as R
 import Discord.Types

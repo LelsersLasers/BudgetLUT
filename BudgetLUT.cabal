@@ -80,6 +80,7 @@ executable BudgetLUT
     -- other-extensions:
 
     build-depends:    base ^>=4.17.1.0,
+                      extra,
                       discord-haskell,
                       text,
                       unliftio,
