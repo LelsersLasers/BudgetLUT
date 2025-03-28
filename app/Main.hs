@@ -19,7 +19,8 @@ import qualified Data.ByteString.Lazy as BL
 import Data.Maybe (isJust)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Data.List (nub)
+-- import Data.List (nub)
+import Data.Lisst.Extra (nubOrd)
 import Discord
 import qualified Discord.Requests as R
 import Discord.Types
@@ -289,10 +290,10 @@ parallelDedup xs =
   let
     cores = max (numCapabilities - 1) 1
     chunks = chunksOf (length xs `div` cores) xs
-    dedupedChunks = parMap rdeepseq nub chunks
+    dedupedChunks = parMap rdeepseq nubOrd chunks
     finalResult = concat dedupedChunks
   in
-    nub finalResult
+    nubOrd finalResult
 
 -- Apply the LUT to an image in parallel
 -- generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
