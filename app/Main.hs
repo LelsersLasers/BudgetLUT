@@ -34,6 +34,8 @@ import UnliftIO (liftIO)
 import UnliftIO.Concurrent
 import qualified Data.Map as Map
 import Data.Foldable (minimumBy)
+-- import qualified Data.Vector as V
+-- import qualified Data.Vector.Unboxed as VU
 import Data.Ord (comparing)
 import GHC.Conc (numCapabilities)
 import Data.List.Split (chunksOf)
@@ -316,15 +318,11 @@ parallelDedup xs =
 generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
 generateImageParallel f lutPixels width height =
   let
-    -- rows = [[f x y lutPixels | x <- [0 .. width - 1]] | y <- [0 .. height - 1]]
-    -- rowsEval = withStrategy (parList (parList rdeepseq)) rows
     pixels = [(x, y) | y <- [0 .. height - 1], x <- [0 .. width - 1]]
     applied = parMap rdeepseq (\(x, y) -> f x y lutPixels) pixels
-    rows = chunksOf width applied
-    getPixel x y = rows !! y !! x
+    appliedVec = VU.fromList applied
   in
-    -- rowsEval `deepseq` generateImage (\x y -> rowsEval !! y !! x) width height
-    generateImage getPixel width height
+    generateImage (\x y -> appliedVec V.! (y * width + x)) width height
 
 -- Apply the LUT to a single pixel. This means choosing the cloest pixel value in the LUT for each pixel in the image.
 applyLutPixel :: PixelRGBA8 -> [PixelRGBA8] -> PixelRGBA8
