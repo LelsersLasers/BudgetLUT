@@ -21,6 +21,7 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 -- import Data.List (nub)
 import Data.List.Extra (nubOrd)
+import qualified Data.Vector as V
 import Discord
 import qualified Discord.Requests as R
 import Discord.Types
@@ -313,18 +314,27 @@ parallelDedup xs =
 --     -- Force full evaluation to avoid laziness after parallel execution
 --     rowsEval `deepseq` generateImage (\x y -> rowsEval !! y !! x) width height
 
+-- generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
+-- generateImageParallel f lutPixels width height =
+--   let
+--     -- rows = [[f x y lutPixels | x <- [0 .. width - 1]] | y <- [0 .. height - 1]]
+--     -- rowsEval = withStrategy (parList (parList rdeepseq)) rows
+--     pixels = [(x, y) | y <- [0 .. height - 1], x <- [0 .. width - 1]]
+--     applied = parMap rdeepseq (\(x, y) -> f x y lutPixels) pixels
+--     rows = chunksOf width applied
+--     getPixel x y = rows !! y !! x
+--   in
+--     -- rowsEval `deepseq` generateImage (\x y -> rowsEval !! y !! x) width height
+--     generateImage getPixel width height
+
 generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
 generateImageParallel f lutPixels width height =
   let
-    -- rows = [[f x y lutPixels | x <- [0 .. width - 1]] | y <- [0 .. height - 1]]
-    -- rowsEval = withStrategy (parList (parList rdeepseq)) rows
     pixels = [(x, y) | y <- [0 .. height - 1], x <- [0 .. width - 1]]
     applied = parMap rdeepseq (\(x, y) -> f x y lutPixels) pixels
-    rows = chunksOf width applied
-    getPixel x y = rows !! y !! x
+    appliedVec = V.fromList applied
   in
-    -- rowsEval `deepseq` generateImage (\x y -> rowsEval !! y !! x) width height
-    generateImage getPixel width height
+    generateImage (\x y -> appliedVec V.! (y * width + x)) width height
 
 -- Apply the LUT to a single pixel. This means choosing the cloest pixel value in the LUT for each pixel in the image.
 applyLutPixel :: PixelRGBA8 -> [PixelRGBA8] -> PixelRGBA8
