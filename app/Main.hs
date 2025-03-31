@@ -12,6 +12,7 @@ import qualified Configuration.Dotenv as Dotenv
 import Control.Exception (SomeException, try)
 import Control.Monad (replicateM, unless, void)
 import Control.DeepSeq (NFData(..))
+import Control.DeepSeq (force)
 import Control.Parallel.Strategies
 -- import Control.Parallel
 import Data.Acid
@@ -299,8 +300,8 @@ parallelDedup xs =
 generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
 generateImageParallel f lutPixels width height =
   let
-    pixels = [(x, y) | y <- [0 .. height - 1], x <- [0 .. width - 1]]
-    applied = parMap rdeepseq (\(x, y) -> f x y lutPixels) pixels
+    pixels = [f x y lutPixels | y <- [0 .. height - 1], x <- [0 .. width - 1]]
+    applied = force $ using pixels $ parListChunk 1000 rdeepseq
     appliedVec = V.fromList applied
   in
     generateImage (\x y -> appliedVec V.! (y * width + x)) width height
