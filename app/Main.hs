@@ -13,16 +13,13 @@ import Control.Monad (replicateM, unless, void)
 import Control.Parallel.Strategies
 import Data.Acid
 import qualified Data.ByteString.Lazy as BL
--- import Data.List (nub)
-
-import Data.Foldable (minimumBy)
 import Data.List.Extra (nubOrd)
 import Data.List.Split (chunksOf)
 import qualified Data.Map as Map
-import Data.Maybe (isJust)
-import Data.Ord (comparing)
+import Data.Maybe (fromMaybe, isJust)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import Data.Trees.KdTree
 import qualified Data.Vector as V
 import Discord
 import qualified Discord.Requests as R
@@ -39,6 +36,14 @@ import UnliftIO.Concurrent
 
 instance NFData PixelRGBA8 where
   rnf (PixelRGBA8 r g b a) = r `seq` g `seq` b `seq` a `seq` ()
+
+instance Point PixelRGBA8 where
+  dimension _ = 3 -- R, G, B as dimensions
+
+  coord 0 (PixelRGBA8 r _ _ _) = fromIntegral r
+  coord 1 (PixelRGBA8 _ g _ _) = fromIntegral g
+  coord 2 (PixelRGBA8 _ _ b _) = fromIntegral b
+  coord _ _ = error "Invalid coordinate"
 
 -- Constants for file saving
 lutFolder :: FilePath
@@ -274,9 +279,10 @@ applyLut lutFilename filename newApplyFilename = do
           let lutPixels = [pixelAt lutImage x y | x <- [0 .. imageWidth lutImage - 1], y <- [0 .. imageHeight lutImage - 1]]
           liftIO $ putStrLn $ "LUT size: " <> show (length lutPixels)
           let lutPixelsDeduped = parallelDedup lutPixels
+          let lutTree = fromList lutPixelsDeduped
           liftIO $ putStrLn $ "LUT size: " <> show (length lutPixelsDeduped)
           let f x y = applyLutPixel (pixelAt inputImage x y)
-          let outputImage = generateImageParallel f lutPixels width height
+          let outputImage = generateImageParallel f lutTree width height
           liftIO $ putStrLn $ "Saving " <> newApplyFilename
           savePngImage newApplyFilename (ImageRGBA8 outputImage)
           liftIO $ putStrLn "Done!"
@@ -291,7 +297,7 @@ parallelDedup xs =
       finalResult = concat dedupedChunks
    in nubOrd finalResult
 
-generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
+generateImageParallel :: (Int -> Int -> KdTree PixelRGBA8 -> PixelRGBA8) -> KdTree PixelRGBA8 -> Int -> Int -> Image PixelRGBA8
 generateImageParallel f lutPixels width height =
   let pixels = [f x y lutPixels | y <- [0 .. height - 1], x <- [0 .. width - 1]]
       applied = force $ using pixels $ parListChunk 1000 rdeepseq
@@ -299,8 +305,11 @@ generateImageParallel f lutPixels width height =
    in generateImage (\x y -> appliedVec V.! (y * width + x)) width height
 
 -- Apply the LUT to a single pixel. This means choosing the cloest pixel value in the LUT for each pixel in the image.
-applyLutPixel :: PixelRGBA8 -> [PixelRGBA8] -> PixelRGBA8
-applyLutPixel pixel = minimumBy (comparing (pixelDistance pixel))
+applyLutPixel :: PixelRGBA8 -> KdTree PixelRGBA8 -> PixelRGBA8
+applyLutPixel pixel lutTree =
+  let (PixelRGBA8 r g b _) = pixel
+      bestPixel = Data.Maybe.fromMaybe pixel (nearestNeighbor lutTree (PixelRGBA8 r g b 0))
+   in bestPixel
 
 pixelDistance :: PixelRGBA8 -> PixelRGBA8 -> Int
 pixelDistance (PixelRGBA8 r1 g1 b1 _) (PixelRGBA8 r2 g2 b2 _) =

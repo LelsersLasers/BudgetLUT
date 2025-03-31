@@ -122,7 +122,8 @@ executable BudgetLUT
                       parallel >= 3.2.2 && < 3.3,
                       data-default-class < 0.2,
                       data-default < 0.8.0,
-                      vector >= 0.13.2 && < 0.14
+                      vector >= 0.13.2 && < 0.14,
+                      KdTree == 0.2.2.1
 
     -- Directories containing source files.
     hs-source-dirs:   app
