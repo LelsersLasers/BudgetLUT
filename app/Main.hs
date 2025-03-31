@@ -2,8 +2,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveGeneric #-}
-
 
 module Main where
 
@@ -12,8 +10,8 @@ import qualified Configuration.Dotenv as Dotenv
 import Control.Exception (SomeException, try)
 import Control.Monad (replicateM, unless, void)
 import Control.DeepSeq (force, NFData(..))
-import Data.Set (Set, fromList, lookupGE, lookupLE)
-import Data.Maybe (fromJust, isJust)
+-- import Data.Set (Set, fromList, lookupGE, lookupLE)
+import Data.Maybe (isJust)
 import Control.Parallel.Strategies
 -- import Control.Parallel
 import Data.Acid
@@ -35,8 +33,8 @@ import System.Random
 import UnliftIO (liftIO)
 import UnliftIO.Concurrent
 import qualified Data.Map as Map
--- import Data.Foldable (minimumBy)
--- import Data.Ord (comparing)
+import Data.Foldable (minimumBy)
+import Data.Ord (comparing)
 import GHC.Conc (numCapabilities)
 import Data.List.Split (chunksOf)
 
@@ -278,9 +276,8 @@ applyLut lutFilename filename newApplyFilename = do
           liftIO $ putStrLn $ "LUT size: " <> show (length lutPixels)
           let lutPixelsDeduped = parallelDedup lutPixels
           liftIO $ putStrLn $ "LUT size: " <> show (length lutPixelsDeduped)
-          let lutSet = fromList lutPixels
           let f x y = applyLutPixel (pixelAt inputImage x y)
-          let outputImage = generateImageParallel f lutSet width height
+          let outputImage = generateImageParallel f lutPixels width height
           liftIO $ putStrLn $ "Saving " <> newApplyFilename
           savePngImage newApplyFilename (ImageRGBA8 outputImage)
           liftIO $ putStrLn "Done!"
@@ -298,31 +295,34 @@ parallelDedup xs =
   in
     nubOrd finalResult
 
-generateImageParallel :: (Int -> Int -> Set PixelRGBA8 -> PixelRGBA8) -> Set PixelRGBA8 -> Int -> Int -> Image PixelRGBA8
-generateImageParallel f lutSet width height =
+generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
+generateImageParallel f lutPixels width height =
   let
-    pixels = [f x y lutSet | y <- [0 .. height - 1], x <- [0 .. width - 1]]
+    pixels = [f x y lutPixels | y <- [0 .. height - 1], x <- [0 .. width - 1]]
     applied = force $ using pixels $ parListChunk 1000 rdeepseq
     appliedVec = V.fromList applied
   in
     generateImage (\x y -> appliedVec V.! (y * width + x)) width height
 
 -- Apply the LUT to a single pixel. This means choosing the cloest pixel value in the LUT for each pixel in the image.
+applyLutPixel :: PixelRGBA8 -> [PixelRGBA8] -> PixelRGBA8
+applyLutPixel pixel = minimumBy (comparing (pixelDistance pixel))
+
 -- Uses a Set to speed up the search for the closest pixel.
-applyLutPixel :: PixelRGBA8 -> Set PixelRGBA8 -> PixelRGBA8
-applyLutPixel pixel lutSet =
-  let
-      ge = lookupGE pixel lutSet
-      le = lookupLE pixel lutSet
-      candidates = filter (/= Nothing) [ge, le]
-  in
-    case candidates of
-       []    -> error "Empty LUT!"
-       [c]   -> fromJust c
-       [c1, c2] -> if pixelDistance pixel (fromJust c1) <= pixelDistance pixel (fromJust c2)
-                     then fromJust c1
-                     else fromJust c2
-       _     -> error "Unexpected list length in LUT!"
+-- applyLutPixel :: PixelRGBA8 -> [PixelRGBA8] -> PixelRGBA8
+-- applyLutPixel pixel lutPixels =
+--   let
+--       ge = lookupGE pixel lutPixels
+--       le = lookupLE pixel lutPixels
+--       candidates = filter (/= Nothing) [ge, le]
+--   in
+--     case candidates of
+--        []    -> error "Empty LUT!"
+--        [c]   -> fromJust c
+--        [c1, c2] -> if pixelDistance pixel (fromJust c1) <= pixelDistance pixel (fromJust c2)
+--                      then fromJust c1
+--                      else fromJust c2
+--        _     -> error "Unexpected list length in LUT!"
 
 pixelDistance :: PixelRGBA8 -> PixelRGBA8 -> Int
 pixelDistance (PixelRGBA8 r1 g1 b1 _) (PixelRGBA8 r2 g2 b2 _) =
