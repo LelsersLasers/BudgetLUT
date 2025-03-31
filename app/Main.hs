@@ -1,27 +1,33 @@
+{-# LANGUAGE FlexibleContexts #-}
 -- Allows "strings" to be Data.Text
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE FlexibleContexts #-}
 
 module Main where
 
-import Codec.Picture (convertRGBA8, decodeImage, encodePng, DynamicImage (ImageRGBA8), readImage, savePngImage, Image (imageWidth), imageHeight, generateImage, pixelAt, PixelRGBA8 (..), Pixel (pixelAt))
+import Codec.Picture (DynamicImage (ImageRGBA8), Image (imageWidth), Pixel (pixelAt), PixelRGBA8 (..), convertRGBA8, decodeImage, encodePng, generateImage, imageHeight, pixelAt, readImage, savePngImage)
 import qualified Configuration.Dotenv as Dotenv
+import Control.DeepSeq (NFData (..), force)
 import Control.Exception (SomeException, try)
 import Control.Monad (replicateM, unless, void)
-import Control.DeepSeq (force, NFData(..))
-import Data.Maybe (isJust)
 import Control.Parallel.Strategies
 import Data.Acid
 import qualified Data.ByteString.Lazy as BL
+-- import Data.List (nub)
+
+import Data.Foldable (minimumBy)
+import Data.List.Extra (nubOrd)
+import Data.List.Split (chunksOf)
+import qualified Data.Map as Map
+import Data.Maybe (isJust)
+import Data.Ord (comparing)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
--- import Data.List (nub)
-import Data.List.Extra (nubOrd)
 import qualified Data.Vector as V
 import Discord
 import qualified Discord.Requests as R
 import Discord.Types
+import GHC.Conc (numCapabilities)
 import KeyValueStore
 import Network.HTTP.Simple (getResponseBody, httpBS, parseRequest)
 import System.Directory (createDirectoryIfMissing, removeFile)
@@ -30,11 +36,6 @@ import System.FilePath (takeDirectory)
 import System.Random
 import UnliftIO (liftIO)
 import UnliftIO.Concurrent
-import qualified Data.Map as Map
-import Data.Foldable (minimumBy)
-import Data.Ord (comparing)
-import GHC.Conc (numCapabilities)
-import Data.List.Split (chunksOf)
 
 instance NFData PixelRGBA8 where
   rnf (PixelRGBA8 r g b a) = r `seq` g `seq` b `seq` a `seq` ()
@@ -281,26 +282,21 @@ applyLut lutFilename filename newApplyFilename = do
           liftIO $ putStrLn "Done!"
           return True
 
-
 -- Deduplicate a list in parallel (chunk in CPU cores - 1 chunks, nub each chunk, concat the results, nub the final result)
 parallelDedup :: (Ord a, NFData a) => [a] -> [a]
 parallelDedup xs =
-  let
-    cores = max (numCapabilities - 1) 1
-    chunks = chunksOf (length xs `div` cores) xs
-    dedupedChunks = parMap rdeepseq nubOrd chunks
-    finalResult = concat dedupedChunks
-  in
-    nubOrd finalResult
+  let cores = max (numCapabilities - 1) 1
+      chunks = chunksOf (length xs `div` cores) xs
+      dedupedChunks = parMap rdeepseq nubOrd chunks
+      finalResult = concat dedupedChunks
+   in nubOrd finalResult
 
 generateImageParallel :: (Int -> Int -> [PixelRGBA8] -> PixelRGBA8) -> [PixelRGBA8] -> Int -> Int -> Image PixelRGBA8
 generateImageParallel f lutPixels width height =
-  let
-    pixels = [f x y lutPixels | y <- [0 .. height - 1], x <- [0 .. width - 1]]
-    applied = force $ using pixels $ parListChunk 1000 rdeepseq
-    appliedVec = V.fromList applied
-  in
-    generateImage (\x y -> appliedVec V.! (y * width + x)) width height
+  let pixels = [f x y lutPixels | y <- [0 .. height - 1], x <- [0 .. width - 1]]
+      applied = force $ using pixels $ parListChunk 1000 rdeepseq
+      appliedVec = V.fromList applied
+   in generateImage (\x y -> appliedVec V.! (y * width + x)) width height
 
 -- Apply the LUT to a single pixel. This means choosing the cloest pixel value in the LUT for each pixel in the image.
 applyLutPixel :: PixelRGBA8 -> [PixelRGBA8] -> PixelRGBA8
@@ -308,12 +304,10 @@ applyLutPixel pixel = minimumBy (comparing (pixelDistance pixel))
 
 pixelDistance :: PixelRGBA8 -> PixelRGBA8 -> Int
 pixelDistance (PixelRGBA8 r1 g1 b1 _) (PixelRGBA8 r2 g2 b2 _) =
-  let
-    dr = fromIntegral r1 - fromIntegral r2
-    dg = fromIntegral g1 - fromIntegral g2
-    db = fromIntegral b1 - fromIntegral b2
-  in
-    dr * dr + dg * dg + db * db
+  let dr = fromIntegral r1 - fromIntegral r2
+      dg = fromIntegral g1 - fromIntegral g2
+      db = fromIntegral b1 - fromIntegral b2
+   in dr * dr + dg * dg + db * db
 
 -- Helper function to send a message with a reference to the original message
 sendMessage :: Message -> T.Text -> DiscordHandler ()
