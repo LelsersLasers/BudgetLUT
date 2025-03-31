@@ -27,12 +27,13 @@ import Discord.Types
 import GHC.Conc (numCapabilities)
 import KeyValueStore
 import Network.HTTP.Simple (getResponseBody, httpBS, parseRequest)
-import System.Directory (createDirectoryIfMissing, removeFile)
+import System.Directory (createDirectoryIfMissing, removeFile, listDirectory)
 import System.Environment (lookupEnv)
-import System.FilePath (takeDirectory)
+import System.FilePath (takeDirectory, (</>))
 import System.Random
 import UnliftIO (liftIO)
 import UnliftIO.Concurrent
+import Data.List
 
 instance NFData PixelRGBA8 where
   rnf (PixelRGBA8 r g b a) = r `seq` g `seq` b `seq` a `seq` ()
@@ -97,6 +98,9 @@ main = do
   putStrLn $ "Using " <> show cores <> " cores."
   setNumCapabilities cores
 
+  -- Clean the apply folder
+  cleanApplyFolder
+
   -- Load environment variables from .env file
   Dotenv.loadFile Dotenv.defaultConfig
 
@@ -121,6 +125,14 @@ main = do
           discordGatewayIntent = def {gatewayIntentMessageContent = True}
         }
   TIO.putStrLn err
+
+-- Clean apply folder
+cleanApplyFolder :: IO ()
+cleanApplyFolder = do
+  files <- listDirectory applyFolder
+  let applyFiles = [applyFolder </> f | f <- files, any (`isSuffixOf` f) [".png", ".jpg", ".jpeg"]]
+  mapM_ removeFile applyFiles
+  putStrLn "Cleaned apply folder."
 
 -- Event handler
 eventHandler :: AcidState KeyValueStore -> AcidState KeyValueStore -> Event -> DiscordHandler ()
