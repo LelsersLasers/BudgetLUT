@@ -13,6 +13,7 @@ import Control.Monad (replicateM, unless, void)
 import Control.Parallel.Strategies
 import Data.Acid
 import qualified Data.ByteString.Lazy as BL
+import Data.List
 import Data.List.Extra (nubOrd)
 import Data.List.Split (chunksOf)
 import qualified Data.Map as Map
@@ -27,13 +28,12 @@ import Discord.Types
 import GHC.Conc (numCapabilities)
 import KeyValueStore
 import Network.HTTP.Simple (getResponseBody, httpBS, parseRequest)
-import System.Directory (createDirectoryIfMissing, removeFile, listDirectory)
+import System.Directory (createDirectoryIfMissing, listDirectory, removeFile)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory, (</>))
 import System.Random
 import UnliftIO (liftIO)
 import UnliftIO.Concurrent
-import Data.List
 
 instance NFData PixelRGBA8 where
   rnf (PixelRGBA8 r g b a) = r `seq` g `seq` b `seq` a `seq` ()
