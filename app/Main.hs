@@ -10,10 +10,8 @@ import qualified Configuration.Dotenv as Dotenv
 import Control.Exception (SomeException, try)
 import Control.Monad (replicateM, unless, void)
 import Control.DeepSeq (force, NFData(..))
--- import Data.Set (Set, fromList, lookupGE, lookupLE)
 import Data.Maybe (isJust)
 import Control.Parallel.Strategies
--- import Control.Parallel
 import Data.Acid
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
@@ -307,22 +305,6 @@ generateImageParallel f lutPixels width height =
 -- Apply the LUT to a single pixel. This means choosing the cloest pixel value in the LUT for each pixel in the image.
 applyLutPixel :: PixelRGBA8 -> [PixelRGBA8] -> PixelRGBA8
 applyLutPixel pixel = minimumBy (comparing (pixelDistance pixel))
-
--- Uses a Set to speed up the search for the closest pixel.
--- applyLutPixel :: PixelRGBA8 -> [PixelRGBA8] -> PixelRGBA8
--- applyLutPixel pixel lutPixels =
---   let
---       ge = lookupGE pixel lutPixels
---       le = lookupLE pixel lutPixels
---       candidates = filter (/= Nothing) [ge, le]
---   in
---     case candidates of
---        []    -> error "Empty LUT!"
---        [c]   -> fromJust c
---        [c1, c2] -> if pixelDistance pixel (fromJust c1) <= pixelDistance pixel (fromJust c2)
---                      then fromJust c1
---                      else fromJust c2
---        _     -> error "Unexpected list length in LUT!"
 
 pixelDistance :: PixelRGBA8 -> PixelRGBA8 -> Int
 pixelDistance (PixelRGBA8 r1 g1 b1 _) (PixelRGBA8 r2 g2 b2 _) =
