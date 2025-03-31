@@ -17,14 +17,15 @@ Discord bot written in Haskell for uploading, managing, and applying LUTs* to im
 
 ## TODO
 
-- LUT apply multi thread
 - On boot: clean apply folder
-- Use all but 1 core
 - LUT apply on Multiple files at once
 - Update all error and help and success and etc messages
 - Not forcably convert file formats to PNG?
 - During apply step reply (but no mention) about the current state of the process
-- Add lut does the dedup on the spot?
 - Perserve apply filenames (see ImageConvertBot)
 - Applying store is not KV, just list unique keys
+- Better error handling!
 - Actually understand the monads and side effects instead of just lifting/idk even know
+	- And get rid of all the random side effects
+- Use all but 1 core
+	- Maybe working?
