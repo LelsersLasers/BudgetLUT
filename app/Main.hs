@@ -248,7 +248,7 @@ handleLutApply lutStore applyStore m lutCode = do
               applySuccess <- liftIO $ applyLut lutFilename applyFilename applyFilename
               if applySuccess
                 then do
-                  let content = "Applied LUT: *" <> lutName <> "* (**" <> applyCode <> "**)"
+                  let content = "Applied LUT: *" <> lutName <> "* (**" <> lutCode <> "**)"
                   sendMessageWithAttachments m content (T.pack applyFilename)
                 else do
                   sendMessage m "Failed to apply the LUT. :skull:"
