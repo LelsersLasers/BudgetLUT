@@ -169,10 +169,10 @@ handleLutAdd lutStore m nameParts = do
       let filename = lutFolder <> "/" <> T.unpack code <> ".png"
       success <- liftIO $ downloadFile (T.unpack url) filename
       if success
-        then sendMessage m $ "Added LUT: *" <> name <> "* as **" <> code <> "**"
+        then sendMessage m $ "Added LUT: *" <> name <> "* as **" <> code <> "**."
         else do
           _ <- liftIO $ update lutStore (RemoveKeyValue code)
-          sendMessage m "Failed to download the file. Make sure you upload a valid image!"
+          sendMessage m "Failed to download and process the file. Make sure you upload a valid image."
     _ -> sendMessage m "You need to provide exactly one image attachment for the lut."
 
 -- Handle !lut rename command
@@ -231,18 +231,17 @@ handleLutApply lutStore applyStore m lutCode = do
     Just lutName -> do
       let attachments = messageAttachments m
       case attachments of
-        [] -> sendMessage m lutApplyNoAttachments
+        [] -> sendMessage m "You need to provide at least one image attachment to apply the LUT to."
         as -> do
           void $ restCall $ R.CreateReaction (messageChannelId m, messageId m) "🫡"
 
           let lutFilename = lutFolder <> "/" <> T.unpack lutCode <> ".png"
           lutTree <- readLutImage lutFilename
           case lutTree of
-            Nothing -> sendMessage m "Failed to read the LUT image. Make sure the LUT is valid."
+            Nothing -> sendMessage m "Failed to read the LUT image. Try deleting and re-adding it." -- Shouldn't happen
             Just lt -> multiapply applyStore as lt lutCode lutName m
 
           void $ restCall $ R.DeleteOwnReaction (messageChannelId m, messageId m) "🫡"
-    -- _ -> sendMessage m lutApplyNoAttachments
     Nothing -> sendMessage m $ "LUT **" <> lutCode <> "** not found."
 
 -- Multiapply function
@@ -263,10 +262,10 @@ multiapply applyStore attachments lutTree lutCode lutName m = do
               let content = "Applied LUT: *" <> lutName <> "* (**" <> lutCode <> "**)"
               sendMessageWithAttachments m content (T.pack applyFilename)
             else do
-              sendMessage m "Failed to apply the LUT. :skull:"
+              sendMessage m "Failed to read the input. Try again." -- Shouldn't happen
           liftIO $ removeFile applyFilename
         else do
-          sendMessage m "Failed to download the file. Make sure you upload a valid image!"
+          sendMessage m "Failed to download the image. Make sure you upload a valid image."
 
       multiapply applyStore rest lutTree lutCode lutName m
 
