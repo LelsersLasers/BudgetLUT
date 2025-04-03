@@ -131,8 +131,8 @@ eventHandler lutStore applyStore event = case event of
 -- Handle incoming messages
 handleMessage :: AcidState KeyValueStore -> AcidState KeyValueStore -> Message -> DiscordHandler ()
 handleMessage lutStore applyStore m
-  | isHelp m = sendMessage m "Use `!lut help` to see all the `!lut` commands."
-  | isLut m = handleLutCommand lutStore applyStore m
+  | isMessagePrefix "!help" m = sendMessage m "Use `!lut help` to see all the `!lut` commands."
+  | isMessagePrefix "!lut" m = handleLutCommand lutStore applyStore m
   | otherwise = return ()
 
 -- Handle !lut commands
@@ -203,7 +203,7 @@ handleLutDelete lutStore m code = do
 handleLutList :: AcidState KeyValueStore -> Message -> DiscordHandler ()
 handleLutList lutStore m = do
   result <- liftIO $ query lutStore AllKeyValues
-  let kvs = result -- No need for `Maybe`, as `query` returns the actual result
+  let kvs = result
   if Map.null kvs
     then sendMessage m "No LUTs added yet!"
     else do
@@ -357,16 +357,16 @@ downloadFile url filename = do
   result <- try $ do
     request <- parseRequest url
     response <- httpBS request
-    let content = getResponseBody response -- content :: BS.ByteString
+    let content = getResponseBody response
     case decodeImage content of
-      Left _err -> return False -- Decoding failed
+      Left _ -> return False
       Right dynamicImage -> do
-        let image = convertRGBA8 dynamicImage -- Convert to Image PixelRGBA8
+        let image = convertRGBA8 dynamicImage
         BL.writeFile filename (encodePng image)
-        return True -- Success
+        return True
   case result of
-    Left (_err :: SomeException) -> return False -- Exception occurred
-    Right success -> return success -- Return the result of the operation
+    Left (_ :: SomeException) -> return False
+    Right success -> return success
 
 -- Generate a 3 long code that contains numbers or capital letters
 generateCode :: IO T.Text
@@ -375,7 +375,11 @@ generateCode = do
   return $ T.pack chars
 
 generateChar :: IO Char
-generateChar = randomRIO ('0', 'Z') >>= \c -> if c `elem` (['0' .. '9'] ++ ['A' .. 'Z']) then return c else generateChar
+generateChar = do
+  c <- randomRIO ('0', 'Z')
+  if c `elem` (['0' .. '9'] ++ ['A' .. 'Z'])
+    then return c
+    else generateChar
 
 -- Check of a code is already used
 isCodeUsed :: AcidState KeyValueStore -> T.Text -> DiscordHandler Bool
@@ -396,10 +400,6 @@ generateUniqueCode lutStore = do
 fromBot :: Message -> Bool
 fromBot = userIsBot . messageAuthor
 
--- Check if a message is a !help command
-isHelp :: Message -> Bool
-isHelp = ("!help" `T.isPrefixOf`) . T.toLower . messageContent
-
--- Check if a message is a !lut command
-isLut :: Message -> Bool
-isLut = ("!lut" `T.isPrefixOf`) . T.toLower . messageContent
+-- Check if a message starts with a certain prefix
+isMessagePrefix :: T.Text -> Message -> Bool
+isMessagePrefix prefix = T.isPrefixOf prefix . T.toLower . messageContent
