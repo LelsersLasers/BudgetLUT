@@ -250,15 +250,15 @@ handleLutApply lutStore applyStore m lutCode = do
         [] -> sendMessage m lutApplyNoAttachments
         as -> do
           void $ restCall $ R.CreateReaction (messageChannelId m, messageId m) "🫡"
-          
+
           let lutFilename = lutFolder <> "/" <> T.unpack lutCode <> ".png"
           lutTree <- readLutImage lutFilename
           case lutTree of
             Nothing -> sendMessage m "Failed to read the LUT image. Make sure the LUT is valid."
             Just lt -> multiapply applyStore as lt lutCode lutName m
-          
+
           void $ restCall $ R.DeleteOwnReaction (messageChannelId m, messageId m) "🫡"
-        -- _ -> sendMessage m lutApplyNoAttachments
+    -- _ -> sendMessage m lutApplyNoAttachments
     Nothing -> sendMessage m $ "LUT **" <> lutCode <> "** not found."
 
 -- Multiapply function
@@ -270,7 +270,7 @@ multiapply applyStore attachments lutTree lutCode lutName m = do
       let url = attachmentUrl attachment
       let applyFilename = applyFolder <> "/" <> T.unpack lutCode <> ".png"
       success <- liftIO $ downloadFile (T.unpack url) applyFilename
-      
+
       if success
         then do
           applySuccess <- liftIO $ applyLut lutTree applyFilename
@@ -283,7 +283,7 @@ multiapply applyStore attachments lutTree lutCode lutName m = do
           liftIO $ removeFile applyFilename
         else do
           sendMessage m "Failed to download the file. Make sure you upload a valid image!"
-      
+
       multiapply applyStore rest lutTree lutCode lutName m
 
 -- Read lut image
