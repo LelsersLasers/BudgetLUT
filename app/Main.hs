@@ -78,30 +78,6 @@ lutHelpMessage =
         "Note: names can be multi-worded!"
       ]
 
-lutUnknownCommand :: T.Text
-lutUnknownCommand = "Unknown command. Use `!lut help` for all the available actions."
-
-lutAddNoName :: T.Text
-lutAddNoName = "You need to provide a name for the lut. Use !lut add <name of lut>"
-
-lutAddNoAttachment :: T.Text
-lutAddNoAttachment = "You need to provide exactly one attachment for the lut."
-
-lutRenameMissingArgs :: T.Text
-lutRenameMissingArgs = "You need to provide the code and the new name for the lut. Use !lut rename <code> <new name>"
-
-lutDeleteNoCode :: T.Text
-lutDeleteNoCode = "You need to provide the code of the lut you want to delete. Use !lut delete <code>"
-
-lutViewNoCode :: T.Text
-lutViewNoCode = "You need to provide the code of the lut you want to view. Use !lut view <code>"
-
-lutApplyNoCode :: T.Text
-lutApplyNoCode = "You need to provide the code of the lut you want to apply. Use !lut apply <code>"
-
-lutApplyNoAttachments :: T.Text
-lutApplyNoAttachments = "You need to provide attachments to apply the lut."
-
 -- Main function
 main :: IO ()
 main = do
@@ -166,19 +142,19 @@ handleLutCommand lutStore applyStore m = do
   let parts = tail $ T.words $ messageContent m
   case parts of
     ["help"] -> sendMessage m lutHelpMessage
-    ["add"] -> sendMessage m lutAddNoName
+    ["add"] -> sendMessage m "You need to provide a name for the lut. Use `!lut add <name>`."
     "add" : nameParts -> handleLutAdd lutStore m nameParts
-    ["rename"] -> sendMessage m lutRenameMissingArgs
-    ["rename", _] -> sendMessage m lutRenameMissingArgs
+    ["rename"] -> sendMessage m "You need to provide the code and the new name for the lut. Use `!lut rename <code> <new name>`."
+    ["rename", _] -> sendMessage m "You need to provide the code and the new name for the lut. Use `!lut rename <code> <new name>`."
     "rename" : code : nameParts -> handleLutRename lutStore m (T.toUpper code) nameParts
-    ["delete"] -> sendMessage m lutDeleteNoCode
+    ["delete"] -> sendMessage m "You need to provide the code of the lut you want to delete. Use `!lut delete <code>`."
     ["delete", code] -> handleLutDelete lutStore m (T.toUpper code)
     ["list"] -> handleLutList lutStore m
-    ["view"] -> sendMessage m lutViewNoCode
+    ["view"] -> sendMessage m "You need to provide the code of the lut you want to view. Use `!lut view <code>`."
     ["view", code] -> handleLutView lutStore m (T.toUpper code)
-    ["apply"] -> sendMessage m lutApplyNoCode
+    ["apply"] -> sendMessage m "You need to provide the code of the lut you want to apply. Use `!lut apply <code>`."
     ["apply", code] -> handleLutApply lutStore applyStore m (T.toUpper code)
-    _ -> sendMessage m lutUnknownCommand
+    _ -> sendMessage m "Unknown command. Use `!lut help` for all the available commands."
 
 -- Handle !lut add command
 handleLutAdd :: AcidState KeyValueStore -> Message -> [T.Text] -> DiscordHandler ()
@@ -197,7 +173,7 @@ handleLutAdd lutStore m nameParts = do
         else do
           _ <- liftIO $ update lutStore (RemoveKeyValue code)
           sendMessage m "Failed to download the file. Make sure you upload a valid image!"
-    _ -> sendMessage m lutAddNoAttachment
+    _ -> sendMessage m "You need to provide exactly one image attachment for the lut."
 
 -- Handle !lut rename command
 handleLutRename :: AcidState KeyValueStore -> Message -> T.Text -> [T.Text] -> DiscordHandler ()
