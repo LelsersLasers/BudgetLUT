@@ -9,11 +9,10 @@ import Codec.Picture (DynamicImage (ImageRGBA8), Image (imageWidth), Pixel (pixe
 import qualified Configuration.Dotenv as Dotenv
 import Control.DeepSeq (NFData (..), force)
 import Control.Exception (SomeException, try)
-import Control.Monad (replicateM, unless, void)
+import Control.Monad (forM_, replicateM, unless, void, when)
 import Control.Parallel.Strategies
 import Data.Acid
 import qualified Data.ByteString.Lazy as BL
-import Data.List
 import Data.List.Extra (nubOrd)
 import Data.List.Split (chunksOf)
 import qualified Data.Map as Map
@@ -28,7 +27,7 @@ import Discord.Types
 import GHC.Conc (numCapabilities)
 import KeyValueStore
 import Network.HTTP.Simple (getResponseBody, httpBS, parseRequest)
-import System.Directory (createDirectoryIfMissing, listDirectory, removeFile, removeDirectory)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory, removeDirectory, removeFile)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory, (</>))
 import System.Random
@@ -115,12 +114,18 @@ main = do
   TIO.putStrLn err
 
 -- Clean apply folder
--- TODO: make this work with the new filename system
 cleanApplyFolder :: IO ()
 cleanApplyFolder = do
-  files <- listDirectory applyFolder
-  let applyFiles = [applyFolder </> f | f <- files, any (`isSuffixOf` f) [".png", ".jpg", ".jpeg"]]
-  mapM_ removeFile applyFiles
+  subdirs <- listDirectory applyFolder
+  let targetDirs = [applyFolder </> d | d <- subdirs, length d == 3]
+
+  forM_ targetDirs $ \dir -> do
+    isDir <- doesDirectoryExist dir
+    when isDir $ do
+      contents <- listDirectory dir
+      forM_ contents $ \file -> removeFile (dir </> file)
+      removeDirectory dir
+
   putStrLn "Cleaned apply folder."
 
 -- Event handler
