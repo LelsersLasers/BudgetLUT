@@ -22,7 +22,6 @@ Note: names can be multi-worded!
 
 - Not forcably convert file formats to PNG?
 - During apply step reply (but no mention) about the current state of the process
-- Perserve apply filenames (see ImageConvertBot)
 - Applying store is not KV, just list unique keys
 - Actually understand the monads and side effects instead of just lifting/idk even know
 	- And get rid of all the random side effects

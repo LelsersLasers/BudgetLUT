@@ -28,7 +28,7 @@ import Discord.Types
 import GHC.Conc (numCapabilities)
 import KeyValueStore
 import Network.HTTP.Simple (getResponseBody, httpBS, parseRequest)
-import System.Directory (createDirectoryIfMissing, listDirectory, removeFile)
+import System.Directory (createDirectoryIfMissing, listDirectory, removeFile, removeDirectory)
 import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory, (</>))
 import System.Random
@@ -115,6 +115,7 @@ main = do
   TIO.putStrLn err
 
 -- Clean apply folder
+-- TODO: make this work with the new filename system
 cleanApplyFolder :: IO ()
 cleanApplyFolder = do
   files <- listDirectory applyFolder
@@ -239,19 +240,25 @@ handleLutApply lutStore applyStore m lutCode = do
           lutTree <- readLutImage lutFilename
           case lutTree of
             Nothing -> sendMessage m "Failed to read the LUT image. Try deleting and re-adding it." -- Shouldn't happen
-            Just lt -> multiapply applyStore as lt lutCode lutName m
+            Just lt -> do
+              applyCode <- generateUniqueCode applyStore
+              liftIO $ update applyStore (InsertKeyValue applyCode "")
+              let folder = applyFolder <> "/" <> T.unpack applyCode
+              multiapply folder as lt lutCode lutName m
+              liftIO $ update applyStore (RemoveKeyValue applyCode)
+              liftIO $ removeDirectory folder
 
           void $ restCall $ R.DeleteOwnReaction (messageChannelId m, messageId m) "🫡"
     Nothing -> sendMessage m $ "LUT **" <> lutCode <> "** not found."
 
 -- Multiapply function
-multiapply :: AcidState KeyValueStore -> [Attachment] -> KdTree PixelRGBA8 -> T.Text -> T.Text -> Message -> DiscordHandler ()
-multiapply applyStore attachments lutTree lutCode lutName m = do
+multiapply :: String -> [Attachment] -> KdTree PixelRGBA8 -> T.Text -> T.Text -> Message -> DiscordHandler ()
+multiapply folder attachments lutTree lutCode lutName m = do
   case attachments of
     [] -> return ()
     attachment : rest -> do
       let url = attachmentUrl attachment
-      let applyFilename = applyFolder <> "/" <> T.unpack lutCode <> ".png"
+      let applyFilename = folder <> "/" <> T.unpack (attachmentFilename attachment)
       success <- liftIO $ downloadFile (T.unpack url) applyFilename
 
       if success
@@ -259,15 +266,15 @@ multiapply applyStore attachments lutTree lutCode lutName m = do
           applySuccess <- liftIO $ applyLut lutTree applyFilename
           if applySuccess
             then do
-              let content = "Applied LUT: *" <> lutName <> "* (**" <> lutCode <> "**)"
+              let content = "Applied LUT *" <> lutName <> "* (**" <> lutCode <> "**) to `" <> attachmentFilename attachment <> "`:"
               sendMessageWithAttachments m content (T.pack applyFilename)
             else do
               sendMessage m "Failed to read the input. Try again." -- Shouldn't happen
           liftIO $ removeFile applyFilename
         else do
-          sendMessage m "Failed to download the image. Make sure you upload a valid image."
+          sendMessage m $ "Failed to download and process: `" <> attachmentFilename attachment <> "`."
 
-      multiapply applyStore rest lutTree lutCode lutName m
+      multiapply folder rest lutTree lutCode lutName m
 
 -- Read lut image
 readLutImage :: FilePath -> DiscordHandler (Maybe (KdTree PixelRGBA8))
