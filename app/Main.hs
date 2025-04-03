@@ -155,7 +155,7 @@ eventHandler lutStore applyStore event = case event of
 -- Handle incoming messages
 handleMessage :: AcidState KeyValueStore -> AcidState KeyValueStore -> Message -> DiscordHandler ()
 handleMessage lutStore applyStore m
-  | isHelp m = sendMessage m "Use `!lut help` to see all the !lut commands."
+  | isHelp m = sendMessage m "Use `!lut help` to see all the `!lut` commands."
   | isLut m = handleLutCommand lutStore applyStore m
   | otherwise = return ()
 
