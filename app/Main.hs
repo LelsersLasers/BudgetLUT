@@ -60,11 +60,23 @@ applyStorePath :: FilePath
 applyStorePath = applyFolder <> "/store"
 
 -- Constants for help and error messages
-helpMessage :: T.Text
-helpMessage = "Use `!lut help` for more specifics about the !lut command"
-
 lutHelpMessage :: T.Text
-lutHelpMessage = "TODO!"
+lutHelpMessage =
+  T.pack $
+    unlines
+      [ "All commands:",
+        "```",
+        "!help",
+        "!lut help",
+        "!lut add <name> [with image]",
+        "!lut rename <code> <new name>",
+        "!lut delete <code>",
+        "!lut view <code>",
+        "!lut list",
+        "!lut apply <code> [with image(s)]",
+        "```",
+        "Note: names can be multi-worded!"
+      ]
 
 lutUnknownCommand :: T.Text
 lutUnknownCommand = "Unknown command. Use `!lut help` for all the available actions."
@@ -143,13 +155,9 @@ eventHandler lutStore applyStore event = case event of
 -- Handle incoming messages
 handleMessage :: AcidState KeyValueStore -> AcidState KeyValueStore -> Message -> DiscordHandler ()
 handleMessage lutStore applyStore m
-  | isHelp m = sendHelpMessage m
+  | isHelp m = sendMessage m "Use `!lut help` to see all the !lut commands."
   | isLut m = handleLutCommand lutStore applyStore m
   | otherwise = return ()
-
--- Send help message
-sendHelpMessage :: Message -> DiscordHandler ()
-sendHelpMessage m = sendMessage m helpMessage
 
 -- Handle !lut commands
 handleLutCommand :: AcidState KeyValueStore -> AcidState KeyValueStore -> Message -> DiscordHandler ()

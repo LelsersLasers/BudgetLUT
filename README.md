@@ -4,6 +4,7 @@ Discord bot written in Haskell for uploading, managing, and applying LUTs* to im
 
 ## Commands
 
+All commands:
 ```
 !help
 !lut help
@@ -12,8 +13,9 @@ Discord bot written in Haskell for uploading, managing, and applying LUTs* to im
 !lut delete <code>
 !lut view <code>
 !lut list
-!lut apply <code> [with images]
+!lut apply <code> [with image(s)]
 ```
+Note: names can be multi-worded!
 
 ## TODO
 
