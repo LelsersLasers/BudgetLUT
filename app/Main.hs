@@ -138,7 +138,7 @@ handleMessage lutStore applyStore m
 -- Handle !lut commands
 handleLutCommand :: AcidState KeyValueStore -> AcidState KeyValueStore -> Message -> DiscordHandler ()
 handleLutCommand lutStore applyStore m = do
-  _ <- restCall $ R.TriggerTypingIndicator (messageChannelId m)
+  void $ restCall $ R.TriggerTypingIndicator (messageChannelId m)
   let parts = tail $ T.words $ messageContent m
   case parts of
     ["help"] -> sendMessage m lutHelpMessage
@@ -171,7 +171,7 @@ handleLutAdd lutStore m nameParts = do
       if success
         then sendMessage m $ "Added LUT: *" <> name <> "* as **" <> code <> "**."
         else do
-          _ <- liftIO $ update lutStore (RemoveKeyValue code)
+          liftIO $ update lutStore (RemoveKeyValue code)
           sendMessage m "Failed to download and process the file. Make sure you upload a valid image."
     _ -> sendMessage m "You need to provide exactly one image attachment for the lut."
 
@@ -195,7 +195,7 @@ handleLutDelete lutStore m code = do
     Just name -> do
       liftIO $ update lutStore (RemoveKeyValue code)
       let filename = lutFolder <> "/" <> T.unpack code <> ".png"
-      _ <- liftIO $ removeFile filename
+      liftIO $ removeFile filename
       sendMessage m $ "Deleted LUT: **" <> code <> "** (*" <> name <> "*)."
     Nothing -> sendMessage m $ "LUT **" <> code <> "** not found."
 
@@ -274,8 +274,7 @@ readLutImage :: FilePath -> DiscordHandler (Maybe (KdTree PixelRGBA8))
 readLutImage filename = do
   lutImageDyn <- liftIO $ readImage filename
   case lutImageDyn of
-    Left _ -> do
-      return Nothing
+    Left _ -> return Nothing
     Right lut -> do
       let lutImage = convertRGBA8 lut
       let width = imageWidth lutImage
