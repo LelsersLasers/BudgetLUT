@@ -26,5 +26,6 @@ Discord bot written in Haskell for uploading, managing, and applying LUTs* to im
 - Better error handling!
 - Actually understand the monads and side effects instead of just lifting/idk even know
 	- And get rid of all the random side effects
+- Use Maybe monad
 - Use all but 1 core
 	- Maybe working?

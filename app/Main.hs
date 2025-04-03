@@ -247,58 +247,117 @@ handleLutApply lutStore applyStore m lutCode = do
     Just lutName -> do
       let attachments = messageAttachments m
       case attachments of
-        [a] -> do
-          _ <- restCall $ R.CreateReaction (messageChannelId m, messageId m) "🫡"
+        [] -> sendMessage m lutApplyNoAttachments
+        as -> do
+          void $ restCall $ R.CreateReaction (messageChannelId m, messageId m) "🫡"
+          
           let lutFilename = lutFolder <> "/" <> T.unpack lutCode <> ".png"
-          applyCode <- generateUniqueCode applyStore
-          liftIO $ update applyStore (InsertKeyValue applyCode lutName)
-          let url = attachmentUrl a
-          let applyFilename = applyFolder <> "/" <> T.unpack applyCode <> ".png"
-          success <- liftIO $ downloadFile (T.unpack url) applyFilename
-          if success
-            then do
-              applySuccess <- liftIO $ applyLut lutFilename applyFilename applyFilename
-              if applySuccess
-                then do
-                  let content = "Applied LUT: *" <> lutName <> "* (**" <> lutCode <> "**)"
-                  sendMessageWithAttachments m content (T.pack applyFilename)
-                else do
-                  sendMessage m "Failed to apply the LUT. :skull:"
-              liftIO $ removeFile applyFilename
-            else do
-              sendMessage m "Failed to download the file. Make sure you upload a valid image!"
-          _ <- liftIO $ update applyStore (RemoveKeyValue applyCode)
+          lutTree <- readLutImage lutFilename
+          case lutTree of
+            Nothing -> sendMessage m "Failed to read the LUT image. Make sure the LUT is valid."
+            Just lt -> multiapply applyStore as lt lutCode lutName m
+          
+          -- applyCode <- generateUniqueCode applyStore
+          -- liftIO $ update applyStore (InsertKeyValue applyCode lutName)
+          -- let url = attachmentUrl a
+          -- let applyFilename = applyFolder <> "/" <> T.unpack applyCode <> ".png"
+          -- success <- liftIO $ downloadFile (T.unpack url) applyFilename
+          -- if success
+          --   then do
+          --     applySuccess <- liftIO $ applyLut lutFilename applyFilename applyFilename
+          --     if applySuccess
+          --       then do
+          --         let content = "Applied LUT: *" <> lutName <> "* (**" <> lutCode <> "**)"
+          --         sendMessageWithAttachments m content (T.pack applyFilename)
+          --       else do
+          --         sendMessage m "Failed to apply the LUT. :skull:"
+          --     liftIO $ removeFile applyFilename
+          --   else do
+          --     sendMessage m "Failed to download the file. Make sure you upload a valid image!"
+          -- _ <- liftIO $ update applyStore (RemoveKeyValue applyCode)
           void $ restCall $ R.DeleteOwnReaction (messageChannelId m, messageId m) "🫡"
-        _ -> sendMessage m lutApplyNoAttachments
+        -- _ -> sendMessage m lutApplyNoAttachments
     Nothing -> sendMessage m $ "LUT **" <> lutCode <> "** not found."
 
--- Apply the LUT
-applyLut :: FilePath -> FilePath -> FilePath -> IO Bool
-applyLut lutFilename filename newApplyFilename = do
-  lutImageDyn <- readImage lutFilename
+-- Multiapply function
+multiapply :: AcidState KeyValueStore -> [Attachment] -> KdTree PixelRGBA8 -> T.Text -> T.Text -> Message -> DiscordHandler ()
+multiapply applyStore attachments lutTree lutCode lutName m = do
+  case attachments of
+    [] -> return ()
+    attachment : rest -> do
+      let url = attachmentUrl attachment
+      let applyFilename = applyFolder <> "/" <> T.unpack lutCode <> ".png"
+      success <- liftIO $ downloadFile (T.unpack url) applyFilename
+      if success
+        then do
+          applySuccess <- liftIO $ applyLut lutTree applyFilename
+          if applySuccess
+            then do
+              let content = "Applied LUT: *" <> lutName <> "* (**" <> lutCode <> "**)"
+              sendMessageWithAttachments m content (T.pack applyFilename)
+            else do
+              sendMessage m "Failed to apply the LUT. :skull:"
+          liftIO $ removeFile applyFilename
+        else do
+          sendMessage m "Failed to download the file. Make sure you upload a valid image!"
+      -- Recursively apply the LUT to the remaining attachments
+      multiapply applyStore rest lutTree lutCode lutName m
+
+-- Read lut image
+readLutImage :: FilePath -> DiscordHandler (Maybe (KdTree PixelRGBA8))
+readLutImage filename = do
+  lutImageDyn <- liftIO $ readImage filename
   case lutImageDyn of
-    Left _ -> return False
+    Left _ -> do
+      return Nothing
     Right lut -> do
       let lutImage = convertRGBA8 lut
-      inputImageDyn <- readImage filename
-      case inputImageDyn of
-        Left _ -> return False
-        Right input -> do
-          let inputImage = convertRGBA8 input
-          let (width, height) = (imageWidth inputImage, imageHeight inputImage)
-          liftIO $ putStrLn $ "\nCAPABILITIES: " <> show numCapabilities
-          liftIO $ putStrLn $ "Starting " <> show (width, height)
-          let lutPixels = [pixelAt lutImage x y | x <- [0 .. imageWidth lutImage - 1], y <- [0 .. imageHeight lutImage - 1]]
-          liftIO $ putStrLn $ "LUT size: " <> show (length lutPixels)
-          let lutPixelsDeduped = parallelDedup lutPixels
-          let lutTree = fromList lutPixelsDeduped
-          liftIO $ putStrLn $ "LUT size: " <> show (length lutPixelsDeduped)
-          let f x y = applyLutPixel (pixelAt inputImage x y)
-          let outputImage = generateImageParallel f lutTree width height
-          liftIO $ putStrLn $ "Saving " <> newApplyFilename
-          savePngImage newApplyFilename (ImageRGBA8 outputImage)
-          liftIO $ putStrLn "Done!"
-          return True
+      let width = imageWidth lutImage
+      let height = imageHeight lutImage
+      let lutPixels = [pixelAt lutImage x y | x <- [0 .. width - 1], y <- [0 .. height - 1]]
+      let lutPixelsDeduped = parallelDedup lutPixels
+      return $ Just $ fromList lutPixelsDeduped
+
+
+-- Apply the LUT
+-- applyLut :: FilePath -> FilePath -> FilePath -> IO Bool
+-- applyLut lutFilename filename newApplyFilename = do
+--   lutImageDyn <- readImage lutFilename
+--   case lutImageDyn of
+--     Left _ -> return False
+--     Right lut -> do
+--       let lutImage = convertRGBA8 lut
+--       inputImageDyn <- readImage filename
+--       case inputImageDyn of
+--         Left _ -> return False
+--         Right input -> do
+--           let inputImage = convertRGBA8 input
+--           let (width, height) = (imageWidth inputImage, imageHeight inputImage)
+--           liftIO $ putStrLn $ "\nCAPABILITIES: " <> show numCapabilities
+--           liftIO $ putStrLn $ "Starting " <> show (width, height)
+--           let lutPixels = [pixelAt lutImage x y | x <- [0 .. imageWidth lutImage - 1], y <- [0 .. imageHeight lutImage - 1]]
+--           liftIO $ putStrLn $ "LUT size: " <> show (length lutPixels)
+--           let lutPixelsDeduped = parallelDedup lutPixels
+--           let lutTree = fromList lutPixelsDeduped
+--           liftIO $ putStrLn $ "LUT size: " <> show (length lutPixelsDeduped)
+--           let f x y = applyLutPixel (pixelAt inputImage x y)
+--           let outputImage = generateImageParallel f lutTree width height
+--           liftIO $ putStrLn $ "Saving " <> newApplyFilename
+--           savePngImage newApplyFilename (ImageRGBA8 outputImage)
+--           liftIO $ putStrLn "Done!"
+--           return True
+applyLut :: KdTree PixelRGBA8 -> FilePath -> IO Bool
+applyLut lutTree filename = do
+  inputImageDyn <- readImage filename
+  case inputImageDyn of
+    Left _ -> return False
+    Right input -> do
+      let inputImage = convertRGBA8 input
+      let (width, height) = (imageWidth inputImage, imageHeight inputImage)
+      let f x y = applyLutPixel (pixelAt inputImage x y)
+      let outputImage = generateImageParallel f lutTree width height
+      savePngImage filename (ImageRGBA8 outputImage)
+      return True
 
 -- Deduplicate a list in parallel (chunk in CPU cores - 1 chunks, nub each chunk, concat the results, nub the final result)
 parallelDedup :: (Ord a, NFData a) => [a] -> [a]
