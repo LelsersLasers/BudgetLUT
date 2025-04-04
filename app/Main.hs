@@ -85,6 +85,9 @@ main = do
   putStrLn $ "Using " <> show cores <> " cores."
   setNumCapabilities cores
 
+  createDirectoryIfMissing True lutFolder
+  createDirectoryIfMissing True applyFolder
+
   -- Clean the apply folder
   cleanApplyFolder
 
@@ -96,9 +99,6 @@ main = do
   tok <- case maybeToken of
     Just token -> return (T.pack token)
     Nothing -> fail "DISCORD_TOKEN not found in environment"
-
-  createDirectoryIfMissing True lutFolder
-  createDirectoryIfMissing True applyFolder
 
   lutStore <- openLocalStateFrom lutStorePath emptyStore
   applyStore <- openLocalStateFrom applyStorePath emptyStore
