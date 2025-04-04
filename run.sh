@@ -2,4 +2,6 @@
 
 cd /home/millankumar/code/BudgetLUT
 
-cabal run
+export PATH="$HOME/.ghcup/bin:$PATH"
+
+/home/millankumar/.ghcup/bin/cabal run
