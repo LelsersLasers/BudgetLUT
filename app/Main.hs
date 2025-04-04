@@ -97,6 +97,9 @@ main = do
     Just token -> return (T.pack token)
     Nothing -> fail "DISCORD_TOKEN not found in environment"
 
+  createDirectoryIfMissing True lutFolder
+  createDirectoryIfMissing True applyFolder
+
   lutStore <- openLocalStateFrom lutStorePath emptyStore
   applyStore <- openLocalStateFrom applyStorePath emptyStore
 
