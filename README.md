@@ -22,6 +22,7 @@ Note: names can be multi-worded!
 
 - Create a lut using a list of raw hex codes
 - View a deduped lut (show as a color strip or color square of sorted colors)
+- HSV option instead of just RGB (or another dist function?)
 - Not forcably convert file formats to PNG?
 - Applying store is not KV, just list unique keys
 - Actually understand the monads and side effects instead of just lifting/idk even know
