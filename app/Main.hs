@@ -365,7 +365,7 @@ applyLut lutTree filename = do
     Right input -> do
       let inputImage = convertRGBA8 input
       let (width, height) = (imageWidth inputImage, imageHeight inputImage)
-      let f x y = applyLutPixel (pixelAt inputImage x y)
+      let f x y = applyLutPixel $ rgbaToHSVasRGBA $ pixelAt inputImage x y
       let outputImage = generateImageParallel f lutTree width height
       savePngImage filename (ImageRGBA8 outputImage)
       return True
@@ -381,7 +381,7 @@ parallelDedup xs =
 
 generateImageParallel :: (Int -> Int -> KdTree PixelRGBA8 -> PixelRGBA8) -> KdTree PixelRGBA8 -> Int -> Int -> Image PixelRGBA8
 generateImageParallel f lutPixels width height =
-  let pixels = [f x y lutPixels | y <- [0 .. height - 1], x <- [0 .. width - 1]]
+  let pixels = [packedHSVtoRGB (f x y lutPixels) | y <- [0 .. height - 1], x <- [0 .. width - 1]]
       applied = force $ using pixels $ parListChunk 1000 rdeepseq
       appliedVec = V.fromList applied
    in generateImage (\x y -> appliedVec V.! (y * width + x)) width height
@@ -393,12 +393,12 @@ applyLutPixel pixel lutTree =
       bestPixel = Data.Maybe.fromMaybe pixel (nearestNeighbor lutTree (PixelRGBA8 r g b 0))
    in bestPixel
 
-pixelDistance :: PixelRGBA8 -> PixelRGBA8 -> Int
-pixelDistance (PixelRGBA8 r1 g1 b1 _) (PixelRGBA8 r2 g2 b2 _) =
-  let dr = fromIntegral r1 - fromIntegral r2
-      dg = fromIntegral g1 - fromIntegral g2
-      db = fromIntegral b1 - fromIntegral b2
-   in dr * dr + dg * dg + db * db
+-- pixelDistance :: PixelRGBA8 -> PixelRGBA8 -> Int
+-- pixelDistance (PixelRGBA8 r1 g1 b1 _) (PixelRGBA8 r2 g2 b2 _) =
+--   let dr = fromIntegral r1 - fromIntegral r2
+--       dg = fromIntegral g1 - fromIntegral g2
+--       db = fromIntegral b1 - fromIntegral b2
+--    in dr * dr + dg * dg + db * db
 
 -- Helper function to send a message with a reference to the original message
 sendMessage :: Message -> T.Text -> DiscordHandler ()
