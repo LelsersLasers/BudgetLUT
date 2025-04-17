@@ -102,7 +102,7 @@ executable BudgetLUT
                       data-default-class < 0.2,
                       data-default < 0.8.0,
                       vector >= 0.13.2 && < 0.14,
-                      KdTree == 0.2.2.1
+                      KdTree
 
     -- Directories containing source files.
     hs-source-dirs:   app
