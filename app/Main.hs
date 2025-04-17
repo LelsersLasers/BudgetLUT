@@ -14,6 +14,7 @@ import Control.Monad (forM_, replicateM, unless, void, when)
 import Control.Parallel.Strategies
 import Data.Acid
 import qualified Data.ByteString.Lazy as BL
+import Data.Fixed (mod')
 import Data.List.Extra (nubOrd)
 import Data.List.Split (chunksOf)
 import qualified Data.Map as Map
@@ -34,7 +35,6 @@ import System.FilePath (takeDirectory, (</>))
 import System.Random
 import UnliftIO (liftIO)
 import UnliftIO.Concurrent
-import Data.Fixed (mod')
 
 instance NFData PixelRGBA8 where
   rnf (PixelRGBA8 r g b a) = r `seq` g `seq` b `seq` a `seq` ()
@@ -242,15 +242,15 @@ rgbToHsv r g b =
       delta = maxC - minC
 
       h
-        | delta == 0    = 0
-        | maxC == r     = 60 * (((g - b) / delta) `mod'` 6)
-        | maxC == g     = 60 * (((b - r) / delta) + 2)
-        | maxC == b     = 60 * (((r - g) / delta) + 4)
-        | otherwise     = 0
+        | delta == 0 = 0
+        | maxC == r = 60 * (((g - b) / delta) `mod'` 6)
+        | maxC == g = 60 * (((b - r) / delta) + 2)
+        | maxC == b = 60 * (((r - g) / delta) + 4)
+        | otherwise = 0
 
       s = if maxC == 0 then 0 else delta / maxC
       v = maxC
-  in (h, s, v)
+   in (h, s, v)
 
 -- Convert RGB to HSV, and pack HSV into PixelRGBA8
 rgbaToHSVasRGBA :: PixelRGBA8 -> PixelRGBA8
@@ -262,35 +262,32 @@ rgbaToHSVasRGBA (PixelRGBA8 r g b a) =
       (h, s, v) = rgbToHsv rf gf bf
 
       -- Scale to Word8-safe ranges
-      h' = round (h / 360 * 255)   -- Hue: 0–360 -> 0–255
-      s' = round (s * 255)         -- Sat: 0–1   -> 0–255
-      v' = round (v * 255)         -- Val: 0–1   -> 0–255
-
-  in PixelRGBA8 h' s' v' a
+      h' = round (h / 360 * 255) -- Hue: 0–360 -> 0–255
+      s' = round (s * 255) -- Sat: 0–1   -> 0–255
+      v' = round (v * 255) -- Val: 0–1   -> 0–255
+   in PixelRGBA8 h' s' v' a
 
 packedHSVtoRGB :: PixelRGBA8 -> PixelRGBA8
 packedHSVtoRGB (PixelRGBA8 h s v a) =
-  let
-      h' = fromIntegral h / 255 * 360  :: Float
-      s' = fromIntegral s / 255        :: Float
-      v' = fromIntegral v / 255        :: Float
+  let h' = fromIntegral h / 255 * 360 :: Float
+      s' = fromIntegral s / 255 :: Float
+      v' = fromIntegral v / 255 :: Float
 
       c = v' * s'
       x = c * (1 - abs ((h' / 60) `mod'` 2 - 1))
       m = v' - c
 
       (r1, g1, b1)
-        | 0   <= h' && h' < 60   = (c, x, 0)
-        | 60  <= h' && h' < 120  = (x, c, 0)
-        | 120 <= h' && h' < 180  = (0, c, x)
-        | 180 <= h' && h' < 240  = (0, x, c)
-        | 240 <= h' && h' < 300  = (x, 0, c)
-        | 300 <= h' && h' < 360  = (c, 0, x)
-        | otherwise              = (0, 0, 0)
+        | 0 <= h' && h' < 60 = (c, x, 0)
+        | 60 <= h' && h' < 120 = (x, c, 0)
+        | 120 <= h' && h' < 180 = (0, c, x)
+        | 180 <= h' && h' < 240 = (0, x, c)
+        | 240 <= h' && h' < 300 = (x, 0, c)
+        | 300 <= h' && h' < 360 = (c, 0, x)
+        | otherwise = (0, 0, 0)
 
       toWord8 i = round ((i + m) * 255)
-
-  in PixelRGBA8 (toWord8 r1) (toWord8 g1) (toWord8 b1) a
+   in PixelRGBA8 (toWord8 r1) (toWord8 g1) (toWord8 b1) a
 
 -- Handle !lut apply command
 handleLutApply :: AcidState KeyValueStore -> AcidState KeyValueStore -> Message -> T.Text -> DiscordHandler ()
