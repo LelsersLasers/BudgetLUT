@@ -2,6 +2,7 @@
 -- Allows "strings" to be Data.Text
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Main where
 
